@@ -591,7 +591,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq)
       retval = -EIO;
       goto errout;
     }
-  priv->ifstate = ENC_RESET;
+  priv->ifstate = NCV_RESET;
   ninfo("Resetting ncv7410 OK\n");
 
   /* attach testing ISR */
