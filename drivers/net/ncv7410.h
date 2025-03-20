@@ -1,8 +1,11 @@
 #include <nuttx/bits.h>
 #include <stdint.h>
 
-/* NuttX SPI mode number for spi config as defined in OpenAlliance TC6 */
+/* NuttX SPI mode number for SPI config as defined in OpenAlliance TC6 */
 #define OA_TC6_SPI_MODE 0
+
+/* Number of bits in a SPI word */
+#define OA_TC6_SPI_NBITS 8
 
 #define CHUNK_DEFAULT_PAYLOAD_SIZE 64
 /* #define CHUNK_DEFAULT_PAYLOAD_SIZE 32 */

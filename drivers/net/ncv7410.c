@@ -32,27 +32,24 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
-#include <string.h>
+/* #include <string.h> */
 #include <assert.h>
 #include <debug.h>
 #include <errno.h>
 
-#include <arpa/inet.h>
+#include <nuttx/spi/spi.h>
+#include <sys/endian.h>
 
 #include <nuttx/irq.h>
-#include <nuttx/arch.h>
-#include <nuttx/wdog.h>
-#include <nuttx/spi/spi.h>
-#include <nuttx/wqueue.h>
-#include <nuttx/clock.h>
-#include <nuttx/net/enc28j60.h>
-#include <nuttx/net/net.h>
-#include <nuttx/net/ip.h>
-#include <nuttx/net/netdev.h>
+#include <nuttx/kmalloc.h>
+/* #include <nuttx/wdog.h> */
+/* #include <nuttx/wqueue.h> */
+/* #include <nuttx/clock.h> */
+#include <nuttx/net/ncv7410.h>
+#include <nuttx/net/netdev_lowerhalf.h>
 
-#ifdef CONFIG_NET_PKT
-#  include <nuttx/net/pkt.h>
-#endif
+// DEBUG
+#include <unistd.h>
 
 #include "ncv7410.h"
 
@@ -69,66 +66,40 @@
  * CONFIG_NCV7410_DUMP_PACKET - dump packets to the console
  */
 
-/* CONFIG_NET_ETH_PKTSIZE must always be defined */
-
-#if !defined(CONFIG_NET_ETH_PKTSIZE) && (CONFIG_NET_ETH_PKTSIZE <= MAX_FRAMELEN)
-#  error "CONFIG_NET_ETH_PKTSIZE is not valid for the ENC28J60"
-#endif
-
-/* We need to have the work queue to handle SPI interrupts */
-
-#if !defined(CONFIG_SCHED_LPWORK)
-#  error "Low priority worker thread support is required (CONFIG_SCHED_LPWORK)"
-#endif
-
 #define ENCWORK LPWORK
 
 #ifdef CONFIG_NCV7410_DUMPPACKET
-#  define ncv7410_dumppacket(m,a,n) lib_dumpbuffer(m,a,n)
+#  define ncv_dumppacket(m,a,n) lib_dumpbuffer(m,a,n)
 #else
-#  define ncv7410_dumppacket(m,a,n)
+#  define ncv_dumppacket(m,a,n)
 #endif
 
 /* Timing *******************************************************************/
 
 /* TX timeout = 1 minute */
 
-#define NCV7410_TXTIMEOUT (60*CLK_TCK)
-
-/* Poll timeout */
-
-#define NCV7410_POLLTIMEOUT MSEC2TICK(50)
+#define NCV7410_TXTIMEOUT (60*CLOCKS_PER_SECOND)
 
 /* Packet Memory ************************************************************/
+#define NCV7410_PKTBUF_SIZE     100 //2048
+#define NCV7410_PKTBUF_SIZE     100 //2048
 
-/* Packet memory layout */
+/* this will probably need some tweaking */
 
-#define ALIGNED_BUFSIZE ((CONFIG_NET_ETH_PKTSIZE + 255) & ~255)
+#define NCV7410_TX_QUOTA        1
+#define NCV7410_RX_QUOTA        1
 
-/* Work around Errata #5 (spurious reset of ERXWRPT to 0) by placing the RX
- * FIFO at the beginning of packet memory.
- */
-
-#define ERRATA5 1
-#if ERRATA5
-#  define PKTMEM_RX_START 0x0000                            /* RX buffer must be at addr 0 for errata 5 */
-#  define PKTMEM_RX_END   (PKTMEM_END-ALIGNED_BUFSIZE)      /* RX buffer length is total SRAM minus TX buffer */
-#  define PKTMEM_TX_START (PKTMEM_RX_END+1)                 /* Start TX buffer after */
-#  define PKTMEM_TX_ENDP1 (PKTMEM_TX_START+ALIGNED_BUFSIZE) /* Allow TX buffer for one frame */
-#else
-#  define PKTMEM_TX_START 0x0000                            /* Start TX buffer at 0 */
-#  define PKTMEM_TX_ENDP1 ALIGNED_BUFSIZE                   /* Allow TX buffer for one frame */
-#  define PKTMEM_RX_START PKTMEM_TX_ENDP1                   /* Followed by RX buffer */
-#  define PKTMEM_RX_END   PKTMEM_END                        /* RX buffer goes to the end of SRAM */
+#if CONFIG_IOB_NBUFFERS < (NCV7410_TX_QUOTA + NCV7410_RX_QUOTA)
+#  error CONFIG_IOB_NBUFFERS must be > (NCV7410_TX_QUOTA + NCV7410_RX_QUOTA)
 #endif
 
-/* Packet buffer size */
+#if CONFIG_IOB_BUFSIZE < NCV7410_PKTBUF_SIZE
+#  error CONFIG_IOB_BUFSIZE must be > NCV7410_PKTBUF_SIZE
+#endif
 
-#define PKTBUF_SIZE (MAX_NETDEV_PKTSIZE + CONFIG_NET_GUARDSIZE)
+/* Orher ********************************************************************/
 
-/* This is a helper pointer for accessing the contents of Ethernet header */
-
-#define BUF ((FAR struct eth_hdr_s *)priv->dev.d_buf)
+#define NCV_RESET_TRIES 5
 
 /* Debug ********************************************************************/
 
@@ -136,33 +107,22 @@
  * Private Types
  ****************************************************************************/
 
-/* The state of the interface */
-
-enum enc_state_e
-{
-  ENCSTATE_UNINIT = 0,                /* The interface is in an uninitialized state */
-  ENCSTATE_DOWN,                      /* The interface is down */
-  ENCSTATE_UP                         /* The interface is up */
-};
-
-/* The enc_driver_s encapsulates all state information for a single hardware
+/* The ncv7410_driver_s encapsulates all state information for a single hardware
  * interface
  */
 
+enum ncv_ifstate_e
+{
+  NCV_RESET,
+  NCV_INIT_DOWN,
+  NCV_INIT_UP
+};
+
 struct ncv7410_driver_s
 {
-  /* Device control */
+  /* This holds the information visible to the NuttX network */
 
-  uint8_t               ifstate;       /* Interface state:  See ENCSTATE_* */
-  uint16_t              nextpkt;       /* Next packet address */
-
-  /* Timing */
-
-  struct wdog_s         txtimeout;     /* TX timeout timer */
-
-  struct work_s         irqwork;       /* Interrupt continuation work queue support */
-  struct work_s         towork;        /* Tx timeout work queue support */
-  struct work_s         pollwork;      /* Poll timeout work queue support */
+  struct netdev_lowerhalf_s dev;
 
   /* This is the contained SPI driver instance */
 
@@ -172,26 +132,30 @@ struct ncv7410_driver_s
 
   int irqnum;
 
-  /* This holds the information visible to the NuttX network */
+  /* Work to be performed on the interrupt activation */
 
-  struct net_driver_s   dev;          /* Interface understood by the network */
+  struct work_s work;
+
+  /* Driver state as in ncv_ifstate */
+
+  uint8_t ifstate;
+
+  /* struct wdog_s         txtimeout;     /1* TX timeout timer *1/ */
+
+  /* Pointers to rx and tx buffers */
+
+  FAR netpkt_t *tx_pkt;
+  FAR netpkt_t *rx_pkt;
+  bool rx_pkt_ready;
 };
-
-/****************************************************************************
- * Private Data
- ****************************************************************************/
-
-/* A single packet buffer is used */
-
-static uint16_t g_pktbuf[(PKTBUF_SIZE + 1) / 2];
-
-/* Driver status structure */
-
-static struct ncv7410_driver_s g_ncv7410;
 
 /****************************************************************************
  * Private Function Prototypes
  ****************************************************************************/
+
+/* Utility functions */
+
+static int ncv_get_parity(uint32_t w);
 
 /* Low-level SPI helpers */
 
@@ -205,6 +169,8 @@ static struct ncv7410_driver_s g_ncv7410;
 
 /* Interrupt handling */
 
+static int ncv_test_isr(int irq, FAR void *context, FAR void *arg);
+
 /* Watchdog timer expirations */
 
 /* NuttX callback functions */
@@ -214,11 +180,368 @@ static struct ncv7410_driver_s g_ncv7410;
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
-int test_isr(int irq, FAR void *context, FAR void *arg)
+
+/****************************************************************************
+ * Name: ncv_test_isr
+ *
+ * Description:
+ *   Test whether the ISR is being invoked correctly
+ *
+ * Input Parameters:
+ *   input parameters are not used
+ *
+ * Returned Value:
+ *   zero
+ *
+ * Assumptions:
+ *
+ ****************************************************************************/
+
+static int ncv_test_isr(int irq, FAR void *context, FAR void *arg)
 {
   ninfo("ncv7410 interrupt service routine called\n");
   return 0;
 }
+
+/****************************************************************************
+ * Name: ncv_get_parity
+ *
+ * Description:
+ *   Obtain parity of 32-bit word.
+ *
+ * Input Parameters:
+ *   w - 32-bit word, subject to the parity calculation
+ *
+ * Returned Value:
+ *   If the parity of the word is even, zero is returned. Otherwise one is returned.
+ *
+ ****************************************************************************/
+
+static int ncv_get_parity(uint32_t w)
+{
+  /* www-graphics.stanford.edu/~seander/bithacks.html */
+  w ^= w >> 1;
+  w ^= w >> 2;
+  w = (w & 0x11111111U) * 0x11111111U;
+  return (w >> 28) & 1;
+}
+
+/****************************************************************************
+ * Name: ncv_lock_spi
+ *
+ * Description:
+ *
+ * Input Parameters:
+ *   priv -
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+static inline void ncv_lock_spi(FAR struct ncv7410_driver_s *priv)
+{
+  SPI_LOCK(priv->spi, true);
+}
+
+/****************************************************************************
+ * Name: ncv_unlock_spi
+ *
+ * Description:
+ *
+ * Input Parameters:
+ *   priv -
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+static inline void ncv_unlock_spi(FAR struct ncv7410_driver_s *priv)
+{
+  SPI_LOCK(priv->spi, false);
+}
+
+/****************************************************************************
+ * Name: ncv_config_spi
+ *
+ * Description:
+ *
+ * Input Parameters:
+ *   priv -
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+static inline void ncv_config_spi(FAR struct ncv7410_driver_s *priv)
+{
+  SPI_SETMODE(priv->spi, OA_TC6_SPI_MODE);
+  SPI_SETBITS(priv->spi, OA_TC6_SPI_NBITS);
+  SPI_HWFEATURES(priv->spi, 0);  // disable HW features
+  SPI_SETFREQUENCY(priv->spi, CONFIG_NCV7410_FREQUENCY);
+}
+
+/****************************************************************************
+ * Name: ncv_select_spi
+ *
+ * Description:
+ *   Assert device's CS pin
+ *
+ * Input Parameters:
+ *   priv -
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+static inline void ncv_select_spi(FAR struct ncv7410_driver_s *priv)
+{
+  SPI_SELECT(priv->spi, SPIDEV_ETHERNET(0), true);
+}
+
+/****************************************************************************
+ * Name: ncv_deselect_spi
+ *
+ * Description:
+ *   Releases device's CS pin
+ *
+ * Input Parameters:
+ *   priv -
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+static inline void ncv_deselect_spi(FAR struct ncv7410_driver_s *priv)
+{
+  SPI_SELECT(priv->spi, SPIDEV_ETHERNET(0), false);
+}
+
+/****************************************************************************
+ * Name: ncv_write_reg
+ *
+ * Description:
+ *   Write a word to ncv7410's registers.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver specific data structure
+ *   mms  - Memory Map Selector
+ *   addr - Address in the selected MMS region
+ *   word - 32-bit word to be written to the register
+ *
+ * Returned Value:
+ *   on successful transaction 0 is returned, otherwise 1 is returned
+ *
+ ****************************************************************************/
+
+static int ncv_write_reg(FAR struct ncv7410_driver_s *priv,
+                     uint8_t mms, uint16_t addr, uint32_t word)
+{
+  uint32_t txdata[3] = { 0 };
+  uint32_t rxdata[3] = { 0 };
+
+  // prepare header
+  uint32_t header =   (1    << CTP_WNR_POS)   // write-not-read
+                    | (mms  << CTP_MMS_POS)   // mms
+                    | (addr << CTP_ADDR_POS); // address
+  int parity = ncv_get_parity(header);
+  header |= parity ? 0 : CTP_P_MASK;  // make header odd parity
+
+  // convert to big endian
+  header = htobe32(header);
+  word = htobe32(word);
+
+  // prepare exchange
+  txdata[0] = header;
+  txdata[1] = word;
+
+  ncv_lock_spi(priv);
+  ncv_config_spi(priv);
+  ncv_select_spi(priv);
+  SPI_EXCHANGE(priv->spi, txdata, rxdata, 12);
+  ncv_deselect_spi(priv);
+  ncv_unlock_spi(priv);
+  if (rxdata[1] != header)
+    {
+      nerr("Error writing register\n");
+      return 1;  // error
+    }
+  ninfo("Writing register OK\n");
+  return 0;
+}
+
+/****************************************************************************
+ * Name: ncv_read_reg
+ *
+ * Description:
+ *   Read a word from ncv7410's registers.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver specific data structure
+ *   mms  - Memory Map Selector
+ *   addr - Address in the selected MMS region
+ *   word - pointer to 32-bit variable into which the register will be stored
+ *
+ * Returned Value:
+ *   on successful transaction 0 is returned, otherwise 1 is returned
+ *
+ ****************************************************************************/
+
+static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
+                     uint8_t mms, uint16_t addr, FAR uint32_t *word)
+{
+  uint32_t txdata[3] = { 0 };
+  uint32_t rxdata[3] = { 0 };
+  int parity;
+  uint32_t header;
+
+  // prepare header
+  header =   (mms  << CTP_MMS_POS)   // mms
+           | (addr << CTP_ADDR_POS); // address
+  parity = ncv_get_parity(header);
+  header |= parity ? 0 : CTP_P_MASK;  // make header odd parity
+
+  // convert to big endian
+  header = htobe32(header);
+
+  // prepare exchange
+  txdata[0] = header;
+
+  ncv_lock_spi(priv);
+  ncv_config_spi(priv);
+  ncv_select_spi(priv);
+  SPI_EXCHANGE(priv->spi, txdata, rxdata, 12);
+  ncv_deselect_spi(priv);
+  ncv_unlock_spi(priv);
+
+  *word = be32toh(rxdata[2]);
+  if (rxdata[1] != header)
+    {
+      nerr("Error reading register\n");
+      return 1;  // error
+    }
+  ninfo("Reading register OK\n");
+  return 0;
+}
+
+/****************************************************************************
+ * Name: ncv_reset
+ *
+ * Description:
+ *   Perform SW reset of the ncv7410 MAC-PHY
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver specific data structure
+ *
+ * Returned Value:
+ *   on successful reset 0 is returned, otherwise 1 is returned
+ *
+ ****************************************************************************/
+
+static int ncv_reset(FAR struct ncv7410_driver_s *priv)
+{
+  int tries = NCV_RESET_TRIES;
+  uint32_t regval = (1 << RESET_SWRESET_POS);
+
+  if (ncv_write_reg(priv, RESET_MMS, RESET_ADDR, regval)) return 1;
+  do
+    {
+      if (ncv_read_reg(priv, RESET_MMS, RESET_ADDR, &regval)) return 1;
+    }
+  while (tries-- && (regval & 1));
+  if (regval & 1)
+    {
+      return 1;
+    }
+
+  // clear HDRE in STATUS0 (due to a bug in ncv7410)
+  if (ncv_write_reg(priv, STATUS0_MMS, STATUS0_ADDR, (1 << STATUS0_HDRE_POS))) return 1;
+
+  // clear reset complete flag
+  if (ncv_write_reg(priv, STATUS0_MMS, STATUS0_ADDR, (1 << STATUS0_RESETC_POS))) return 1;
+
+  // blink with LEDs for debugging purposes
+  for (int i = 0; i < 4; i++)
+    {
+      regval = 0x0302;
+      if (ncv_write_reg(priv, DIO_CONFIG_REG_MMS, DIO_CONFIG_REG_ADDR, regval)) return 1;
+      usleep(250000);
+      regval = 0x0203;
+      if (ncv_write_reg(priv, DIO_CONFIG_REG_MMS, DIO_CONFIG_REG_ADDR, regval)) return 1;
+      usleep(250000);
+    }
+
+  // set DIOs to default
+  regval = 0x6060;
+  if (ncv_write_reg(priv, DIO_CONFIG_REG_MMS, DIO_CONFIG_REG_ADDR, regval)) return 1;
+  return 0;
+}
+
+/* Netdev upperhalf callback functions */
+
+static int ncv7410_ifup(FAR struct netdev_lowerhalf_s *dev)
+{
+  return 0;
+}
+
+static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev)
+{
+  return 0;
+}
+
+static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
+                            FAR netpkt_t *pkt)
+{
+  return 0;
+}
+
+static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev)
+{
+  return NULL;
+}
+
+#ifdef CONFIG_NET_MCASTGROUP
+static int ncv7410_addmac(FAR struct netdev_lowerhalf_s *dev,
+                          FAR const uint8_t *mac)
+{
+  return 0;
+}
+
+static int ncv7410_rmmac(FAR struct netdev_lowerhalf_s *dev,
+                         FAR const uint8_t *mac)
+{
+  return 0;
+}
+#endif
+
+#if CONFIG_NETDEV_WORK_THREAD_POLLING_PERIOD > 0
+static void ncv7410_reclaim(FAR struct netdev_lowerhalf_s *dev)
+{
+}
+#endif
+
+/*****************************************************************************
+ * Private Data
+ *****************************************************************************/
+
+static const struct netdev_ops_s g_ncv7410_ops =
+{
+  .ifup     = ncv7410_ifup,
+  .ifdown   = ncv7410_ifdown,
+  .transmit = ncv7410_transmit,
+  .receive  = ncv7410_receive,
+#ifdef CONFIG_NET_MCASTGROUP
+  .addmac   = ncv7410_addmac,
+  .rmmac    = ncv7410_rmmac,
+#endif
+#if CONFIG_NETDEV_WORK_THREAD_POLLING_PERIOD > 0
+  .reclaim  = ncv7410_reclaim,
+#endif
+};
 
 /****************************************************************************
  * Public Functions
@@ -244,35 +567,55 @@ int test_isr(int irq, FAR void *context, FAR void *arg)
 
 int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq)
 {
-  FAR struct ncv7410_driver_s *priv;
+  FAR struct ncv7410_driver_s   *priv   = NULL;
+  FAR struct netdev_lowerhalf_s *netdev = NULL;
+  int retval;
 
-  priv = &g_ncv7410;
+  /* Allocate the interface structure */
 
-  /* Initialize the driver structure */
+  priv = kmm_zalloc(sizeof(*priv));
+  if (priv == NULL)
+    {
+      nerr("Could not allocate data for ncv7410 priv\n");
+      return -ENOMEM;
+    }
 
-  memset(&g_ncv7410, 0, sizeof(struct ncv7410_driver_s));
+  priv->spi = spi;                     /* Save the SPI instance */
+  priv->irqnum = irq;                   /* Save the low-level MCU interface */
 
-  priv->dev.d_buf     = (FAR uint8_t *)g_pktbuf; /* Single packet buffer */
-  /* priv->dev.d_ifup    = enc_ifup;                /1* I/F down callback *1/ */
-  /* priv->dev.d_ifdown  = enc_ifdown;              /1* I/F up (new IP address) callback *1/ */
-  /* priv->dev.d_txavail = enc_txavail;             /1* New TX data callback *1/ */
-/* #ifdef CONFIG_NET_MCASTGROUP */
-  /* priv->dev.d_addmac  = enc_addmac;              /1* Add multicast MAC address *1/ */
-  /* priv->dev.d_rmmac   = enc_rmmac;               /1* Remove multicast MAC address *1/ */
-/* #endif */
-  priv->dev.d_private = priv;                    /* Used to recover private state from dev */
-  priv->spi           = spi;                     /* Save the SPI instance */
-  priv->irqnum        = irq;                   /* Save the low-level MCU interface */
+  /* reset ncv7410 chip */
 
-  /* priv->ifstate = ENCSTATE_UNINIT; */
+  if (ncv_reset(priv))
+    {
+      nerr("Error resetting ncv7410\n");
+      retval = -EIO;
+      goto errout;
+    }
+  priv->ifstate = ENC_RESET;
+  ninfo("Resetting ncv7410 OK\n");
 
-  /* TODO: inintialize ncv7410 chip */
+  /* attach testing ISR */
 
-  /* Register the device with the OS so that socket IOCTLs can be performed */
-  irq_attach(priv->irqnum, test_isr, NULL);
+  irq_attach(priv->irqnum, ncv_test_isr, NULL);
 
-  return netdev_register(&priv->dev, NET_LL_ETHERNET);
+  /* Register the device with the OS */
+
+  netdev = &priv->dev;
+  netdev->quota[NETPKT_TX] = NCV7410_TX_QUOTA;
+  netdev->quota[NETPKT_RX] = NCV7410_RX_QUOTA;
+  netdev->ops = &g_ncv7410_ops;
+
+  retval = netdev_lower_register(netdev, NET_LL_ETHERNET);
+  if (retval == OK)
+    {
+      ninfo("Succesfully registered ncv7410 network driver\n");
+      return OK;
+    }
+  nerr("Error registering ncv7410 network driver: %d\n", retval);
+
+errout:
+  kmm_free(priv);
+  return retval;
 }
 
 #endif /* CONFIG_NET && CONFIG_NCV7410_NET */
-
