@@ -83,18 +83,21 @@ void board_ncv7410_initialize(void)
     }
 
   /* initialize the interrupt GPIO pin as input with PULLUP */
-  /* DEBUGASSERT(GPIO_IS_VALID_GPIO(CONFIG_NCV7410_INT_PIN)); */
   esp_configgpio(CONFIG_NCV7410_INT_PIN, INPUT_FUNCTION_2 | PULLUP);
   irq = ESP_PIN2IRQ(CONFIG_NCV7410_INT_PIN);
-  esp_gpioirqenable(irq, FALLING);
 
   /* Bind the SPI port and interrupt to the NCV7410 driver */
+
   ret = ncv7410_initialize(spi, irq);
   if (ret < 0)
     {
       nerr("ERROR: Failed to bind interrupt and SPI port to the NCV7410 network driver: %d\n", ret);
       return;
     }
+
+  /* driver attaches function to the interrupt, now it can be enabled */
+
+  esp_gpioirqenable(irq, FALLING);
 
   ninfo("Bound interrupt and SPI port to the NCV7410 network driver\n");
 }
