@@ -456,6 +456,9 @@ static void ncv_io_work(FAR void *arg)
 
       if (end_valid(footer))
         {
+          /* strip down last 4 bytes including FCS */
+          netpkt_setdatalen(&priv->dev, priv->rx_pkt,
+                            netpkt_getdatalen(&priv->dev, priv->rx_pkt) - 4);
           priv->rx_pkt_ready = true;
           netdev_lower_rxready(&priv->dev);
         }
@@ -1169,6 +1172,7 @@ static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
   // or mutex
   // for sync with work queue tasks
   priv->tx_pkt = pkt;
+  work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
   return OK;
 }
 
