@@ -31,6 +31,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <assert.h>
 #include <debug.h>
 #include <errno.h>
@@ -157,9 +158,10 @@ struct ncv7410_driver_s
  * Private Function Prototypes
  ****************************************************************************/
 
-/* Parity calculation */
+/* Bit calculations */
 
 static int ncv_get_parity(uint32_t w);
+uint8_t ncv_bitrev8(uint8_t b);
 
 /* SPI transfers */
 
@@ -201,6 +203,7 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv);
 static int ncv_config(FAR struct ncv7410_driver_s *priv);
 static int ncv_enable(FAR struct ncv7410_driver_s *priv);
 static int ncv_disable(FAR struct ncv7410_driver_s *priv);
+static int ncv_init_mac_addr(FAR struct ncv7410_driver_s *priv);
 
 /* NuttX callback functions */
 
@@ -332,7 +335,7 @@ static void ncv_io_work(FAR void *arg)
   uint8_t txbuf[NCV_CHUNK_DEFAULT_SIZE];
   uint8_t rxbuf[NCV_CHUNK_DEFAULT_SIZE];
 
-  uint32_t header = (1 << OA_DNC_POS);
+  uint32_t header = (1 << OA_DNC_POS); /* Data Not Control */
   uint32_t footer;
 
   int txlen;
@@ -340,11 +343,11 @@ static void ncv_io_work(FAR void *arg)
 
   if (priv->txc && priv->tx_pkt != NULL)
     {
-      header |= (1 << OA_DV_POS);  /* data valid */
+      header |= (1 << OA_DV_POS);  /* Data Valid */
 
       if (priv->tx_pkt_idx == 0)
         {
-          header |=   (1 << OA_SV_POS)   /* start valid */
+          header |=   (1 << OA_SV_POS)   /* Start Valid */
                     | (0 << OA_SWO_POS); /* start word at postion 0 in chunk */
         }
 
@@ -352,8 +355,8 @@ static void ncv_io_work(FAR void *arg)
 
       if (txlen <= NCV_CHUNK_DEFAULT_PAYLOAD_SIZE)
         {
-          header |=   (1 << OA_EV_POS)             /* end valid */
-                    | ((txlen - 1) << OA_EBO_POS); /* end byte offset */
+          header |=   (1 << OA_EV_POS)             /* End Valid */
+                    | ((txlen - 1) << OA_EBO_POS); /* End Byte Offset */
         }
       else
         {
@@ -462,7 +465,8 @@ static void ncv_io_work(FAR void *arg)
  *   w - 32-bit word, subject to the parity calculation
  *
  * Returned Value:
- *   If the parity of the word is even, zero is returned. Otherwise one is returned.
+ *   If the parity of the word is even, zero is returned.
+ *   Otherwise one is returned.
  *
  ****************************************************************************/
 
@@ -473,6 +477,29 @@ static int ncv_get_parity(uint32_t w)
   w ^= w >> 2;
   w = (w & 0x11111111U) * 0x11111111U;
   return (w >> 28) & 1;
+}
+
+/****************************************************************************
+ * Name: ncv_bitrev8
+ *
+ * Description:
+ *   perform a bit reverse of a byte
+ *
+ * Input Parameters:
+ *   b - byte to be reversed
+ *
+ * Returned Value:
+ *   Byte with reversed bits is returned
+ *
+ ****************************************************************************/
+
+uint8_t ncv_bitrev8(uint8_t b)
+{
+   /* https://stackoverflow.com/a/2602885 */
+   b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+   b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+   b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+   return b;
 }
 
 /****************************************************************************
@@ -1043,6 +1070,54 @@ static int ncv_disable(FAR struct ncv7410_driver_s *priv)
 }
 
 /****************************************************************************
+ * Name: ncv_init_mac_addr
+ *
+ * Description:
+ *   read the hardware MAC address and copy it into network device struct
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver specific data structure
+ *
+ * Returned Value:
+ *   on success OK is returned, otherwise ERROR is returned
+ *
+ ****************************************************************************/
+
+static int ncv_init_mac_addr(FAR struct ncv7410_driver_s *priv)
+{
+  uint32_t regval;
+  uint8_t  mac[6] = { 0 }; /* the MAC address is stored in LSB bit order */
+
+  if (ncv_read_reg(priv, OA_PHYID_REGID, &regval))
+    {
+      return ERROR;
+    }
+
+  mac[0] |= ncv_bitrev8(regval >> 26);
+  mac[1] |= ncv_bitrev8(regval >> 18);
+  mac[2] |= ncv_bitrev8(regval >> 10);
+
+  if (ncv_read_reg(priv, NCV_MACID1_REGID, &regval))
+    {
+      return ERROR;
+    }
+
+  mac[3] |= regval;
+
+  if (ncv_read_reg(priv, NCV_MACID0_REGID, &regval))
+    {
+      return ERROR;
+    }
+
+  mac[4] |= regval >> 8;
+  mac[5] |= regval;
+
+  memcpy(&priv->dev.netdev.d_mac.ether, &mac, sizeof(struct ether_addr));
+
+  return OK;
+}
+
+/****************************************************************************
  * Name: ncv_print_footer
  *
  * Description:
@@ -1258,7 +1333,15 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq)
   priv->ifstate = NCV_RESET;
   ninfo("Resetting ncv7410 OK\n");
 
-  /* attach testing ISR */
+  if (ncv_init_mac_addr(priv))
+    {
+      nerr("Error initializing ncv7410 MAC address\n");
+      retval = -EIO;
+      goto errout;
+    }
+  ninfo("Initializing MAC address OK\n");
+
+  /* attach ISR */
 
   irq_attach(priv->irqnum, ncv_interrupt, priv);
 

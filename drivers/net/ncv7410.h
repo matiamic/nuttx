@@ -28,6 +28,12 @@ typedef uint32_t oa_regid_t;
 #define OA_PHYID_MMS              0
 #define OA_PHYID_ADDR             0x1U
 #define OA_PHYID_REGID            OA_MAKE_REGID(OA_PHYID_MMS, OA_PHYID_ADDR)
+#define OA_PHYID_OUI_MASK         GENMASK(31, 10)
+#define OA_PHYID_OUI_POS          10
+#define OA_PHYID_MODEL_MASK       GENMASK(9, 4)
+#define OA_PHYID_MODEL_POS        4
+#define OA_PHYID_REV_MASK         GENMASK(3, 0)
+#define OA_PHYID_REV_POS          0
 
 #define OA_STDCAP_MMS             0
 #define OA_STDCAP_ADDR            0x2U
@@ -96,14 +102,14 @@ typedef uint32_t oa_regid_t;
 #define OA_PHY_STATUS_ADDR        0xFF01U
 #define OA_PHY_STATUS_REGID       OA_MAKE_REGID(OA_PHY_STATUS_MMS, OA_PHY_STATUS_ADDR)
 
+/* registers specific to ncv7410 */
+
 #define NCV_MAC_CONTROL0_MMS      1
 #define NCV_MAC_CONTROL0_ADDR     0x0U
 #define NCV_MAC_CONTROL0_REGID    OA_MAKE_REGID(NCV_MAC_CONTROL0_MMS, NCV_MAC_CONTROL0_ADDR)
 #define NCV_MAC_CONTROL0_FCSA_POS 8
 #define NCV_MAC_CONTROL0_TXEN_POS 1
 #define NCV_MAC_CONTROL0_RXEN_POS 0
-
-/* DIO registers specific to ncv7410 */
 
 #define NCV_DIO_CONFIG_MMS        12
 #define NCV_DIO_CONFIG_ADDR       0x0012U
@@ -119,6 +125,18 @@ typedef uint32_t oa_regid_t;
 #define NCV_DIO_LINK_CTRL_FUNC    0x4
 #define NCV_DIO_SFD_TXRX_FUNC     0xB
 #define NCV_DIO_TXRX_FUNC         0xF
+
+#define NCV_MACID0_MMS            12
+#define NCV_MACID0_ADDR           0x1002
+#define NCV_MACID0_REGID          OA_MAKE_REGID(NCV_MACID0_MMS, NCV_MACID0_ADDR)
+#define NCV_MACID0_MASK           GENMASK(15, 0)
+#define NCV_MACID0_POS            0
+
+#define NCV_MACID1_MMS            12
+#define NCV_MACID1_ADDR           0x1003
+#define NCV_MACID1_REGID          OA_MAKE_REGID(NCV_MACID1_MMS, NCV_MACID1_ADDR)
+#define NCV_MACID1_MASK           GENMASK(7, 0)
+#define NCV_MACID1_POS            0
 
 /* OA Data Transaction and Control Transaction protocols bitfields */
 
