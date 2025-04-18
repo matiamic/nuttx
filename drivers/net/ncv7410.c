@@ -31,8 +31,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <time.h>
-/* #include <string.h> */
 #include <assert.h>
 #include <debug.h>
 #include <errno.h>
@@ -42,14 +40,11 @@
 
 #include <nuttx/irq.h>
 #include <nuttx/kmalloc.h>
-/* #include <nuttx/wdog.h> */
-/* #include <nuttx/wqueue.h> */
-/* #include <nuttx/clock.h> */
+#include <nuttx/wqueue.h>
+#include <nuttx/signal.h>
 #include <nuttx/net/ncv7410.h>
 #include <nuttx/net/netdev_lowerhalf.h>
 
-// DEBUG
-#include <unistd.h>
 
 #include "ncv7410.h"
 
@@ -61,30 +56,19 @@
 
 /* NCV7410 Configuration Settings:
  *
- * CONFIG_NCV7410 - Enabled NCV7410 support
- * CONFIG_NCV7410_FREQUENCY   - Define to use a different bus frequency
- * CONFIG_NCV7410_DUMP_PACKET - dump packets to the console
+ * CONFIG_NCV7410           - Enabled NCV7410 support
+ * CONFIG_NCV7410_FREQUENCY - Define to use a different bus frequency
+ * CONFIG_NCV7410_INT_PIN   - Pin used for MAC-PHY interrupt signal
  */
 
 #define NCVWORK LPWORK
 
-#ifdef CONFIG_NCV7410_DUMPPACKET
-#  define ncv_dumppacket(m,a,n) lib_dumpbuffer(m,a,n)
-#else
-#  define ncv_dumppacket(m,a,n)
-#endif
-
-/* Timing *******************************************************************/
-
-/* TX timeout = 1 minute */
-
-#define NCV7410_TXTIMEOUT (60*CLOCKS_PER_SECOND)
-
 /* Packet Memory ************************************************************/
+//TODO: make this make sense
 #define NCV7410_PKTBUF_SIZE     100 //2048
 #define NCV7410_PKTBUF_SIZE     100 //2048
 
-/* this will probably need some tweaking */
+/* Maximum number of allocated tx and rx packets */
 
 #define NCV7410_TX_QUOTA        1
 #define NCV7410_RX_QUOTA        1
@@ -97,11 +81,11 @@
 #  error CONFIG_IOB_BUFSIZE must be > NCV7410_PKTBUF_SIZE
 #endif
 
-/* Orher ********************************************************************/
+#ifndef CONFIG_SCHED_LPWORK
+#  error CONFIG_SCHED_LPWORK is needed by NCV7410 driver
+#endif
 
 #define NCV_RESET_TRIES 5
-
-/* Debug ********************************************************************/
 
 /****************************************************************************
  * Private Types
@@ -119,7 +103,8 @@ enum ncv_ifstate_e
 };
 
 /* use this instead of read-modify-write when changing setup
- * e.g. when changing state up/down */
+ * e.g. when changing state up/down, can also server as a backup for
+ * configuration, when MAC-PHY is reset unexpectedly, now not used */
 
 struct ncv7410_registers_s
 {
@@ -144,12 +129,12 @@ struct ncv7410_driver_s
 
   int irqnum;
 
-  /* Work instances for the work_queue handling */
+  /* Work instances for work_queue handling */
 
   struct work_s interrupt_work;
   struct work_s io_work;
 
-  /* Driver state as in ncv_ifstate */
+  /* Driver state, one of ncv_ifstate_e values */
 
   uint8_t ifstate;
 
@@ -158,9 +143,7 @@ struct ncv7410_driver_s
   int txc;
   int rxa;
 
-  /* struct wdog_s         txtimeout;     /1* TX timeout timer *1/ */
-
-  /* Pointers to rx and tx buffers */
+  /* Packet buffer management */
 
   FAR netpkt_t *tx_pkt;
   FAR netpkt_t *rx_pkt;
@@ -174,15 +157,11 @@ struct ncv7410_driver_s
  * Private Function Prototypes
  ****************************************************************************/
 
-/* Utility functions */
+/* Parity calculation */
 
 static int ncv_get_parity(uint32_t w);
 
-static void ncv_print_footer(uint32_t footer);
-
-/* SPI control register access */
-
-/* SPI buffer transfers */
+/* SPI transfers */
 
 static int ncv_write_reg(FAR struct ncv7410_driver_s *priv,
                          oa_regid_t regid, uint32_t word);
@@ -197,53 +176,57 @@ static int ncv_exchange_chunk(FAR struct ncv7410_driver_s *priv,
                               FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
                               uint32_t header, uint32_t *footer);
 
-/* PHY register access */
-
-/* Common TX logic */
-
 /* Interrupt handling */
 
-static int ncv_test_isr(int irq, FAR void *context, FAR void *arg);
-
 static int ncv_interrupt(int irq, FAR void *context, FAR void *arg);
-
 static void ncv_interrupt_work(FAR void *arg);
-
-/* Watchdog timer expirations */
-
-/* NuttX callback functions */
 
 /* Data Transaction Protocol logic */
 
 static void ncv_io_work(FAR void *arg);
 
+/* SPI inline utility functions */
+
+static inline void ncv_lock_spi(FAR struct ncv7410_driver_s *priv);
+static inline void ncv_unlock_spi(FAR struct ncv7410_driver_s *priv);
+
+static inline void ncv_config_spi(FAR struct ncv7410_driver_s *priv);
+
+static inline void ncv_select_spi(FAR struct ncv7410_driver_s *priv);
+static inline void ncv_deselect_spi(FAR struct ncv7410_driver_s *priv);
+
+/* ncv7410 reset and configuration */
+
+static int ncv_reset(FAR struct ncv7410_driver_s *priv);
+static int ncv_config(FAR struct ncv7410_driver_s *priv);
+static int ncv_enable(FAR struct ncv7410_driver_s *priv);
+static int ncv_disable(FAR struct ncv7410_driver_s *priv);
+
+/* NuttX callback functions */
+
+static int ncv7410_ifup(FAR struct netdev_lowerhalf_s *dev);
+static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev);
+static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
+                            FAR netpkt_t *pkt);
+static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev);
+#ifdef CONFIG_NET_MCASTGROUP
+static int ncv7410_addmac(FAR struct netdev_lowerhalf_s *dev,
+                          FAR const uint8_t *mac);
+static int ncv7410_rmmac(FAR struct netdev_lowerhalf_s *dev,
+                         FAR const uint8_t *mac);
+#endif
+
+/* Debug */
+
+static void ncv_print_footer(uint32_t footer);
+
 /* Initialization */
+
+int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq);
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
-
-/****************************************************************************
- * Name: ncv_test_isr
- *
- * Description:
- *   Test whether the ISR is being invoked correctly
- *
- * Input Parameters:
- *   input parameters are not used
- *
- * Returned Value:
- *   zero
- *
- * Assumptions:
- *
- ****************************************************************************/
-
-static int ncv_test_isr(int irq, FAR void *context, FAR void *arg)
-{
-  ninfo("ncv7410 interrupt service routine called\n");
-  return 0;
-}
 
 /****************************************************************************
  * Name: ncv_interrupt
@@ -449,10 +432,6 @@ static void ncv_io_work(FAR void *arg)
         }
       netpkt_copyin(&priv->dev, priv->rx_pkt, rxbuf, rxlen, priv->rx_pkt_idx);
       priv->rx_pkt_idx += rxlen;
-
-      // TODO: strip down FCS (last 4 bytes), those 4 bytes could reside in
-      // the previously delivered chunk - solve this somehow:
-      // it should be enough to REDUCE DATALEN OF THE PACKET
 
       if (end_valid(footer))
         {
@@ -867,13 +846,13 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
         {
           return ERROR;
         }
-      usleep(250000);
+      nxsig_usleep(250000);
       regval = 0x0203;
       if (ncv_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
         {
           return ERROR;
         }
-      usleep(250000);
+      nxsig_usleep(250000);
     }
 
   // set DIOs to default
@@ -1095,8 +1074,9 @@ static void ncv_print_footer(uint32_t footer)
   ninfo("  TXC:  %d\n", tx_credits(footer));
 }
 
-
-/* Netdev upperhalf callback functions */
+/*****************************************************************************
+ * Netdev upperhalf callbacks
+ *****************************************************************************/
 
 /****************************************************************************
  * Name: ncv7410_ifup
@@ -1204,13 +1184,6 @@ static int ncv7410_rmmac(FAR struct netdev_lowerhalf_s *dev,
                          FAR const uint8_t *mac)
 {
   return 0;
-}
-#endif
-
-#if CONFIG_NETDEV_WORK_THREAD_POLLING_PERIOD > 0
-static void ncv7410_reclaim(FAR struct netdev_lowerhalf_s *dev)
-{
-  return;
 }
 #endif
 

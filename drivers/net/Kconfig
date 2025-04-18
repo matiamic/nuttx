@@ -309,12 +309,6 @@ config NCV7410_FREQUENCY
 	---help---
 		NCV7410 SPI bus frequency
 
-config NCV7410_DUMPPACKET
-	bool "Dump Packets"
-	default n
-	---help---
-		If selected, the NCV7410 driver will dump the contents of each packet to the console.
-
 endif # NCV7410
 
 menuconfig ENCX24J600
