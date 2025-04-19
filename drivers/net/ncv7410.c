@@ -20,7 +20,6 @@
  *
  ****************************************************************************/
 
-
 /****************************************************************************
  * Included Files
  ****************************************************************************/
@@ -46,7 +45,6 @@
 #include <nuttx/net/ncv7410.h>
 #include <nuttx/net/netdev_lowerhalf.h>
 
-
 #include "ncv7410.h"
 
 /****************************************************************************
@@ -65,7 +63,9 @@
 #define NCVWORK LPWORK
 
 /* Packet Memory ************************************************************/
-//TODO: make this make sense
+
+/* TODO: make this make sense */
+
 #define NCV7410_PKTBUF_SIZE     100 //2048
 #define NCV7410_PKTBUF_SIZE     100 //2048
 
@@ -92,8 +92,8 @@
  * Private Types
  ****************************************************************************/
 
-/* The ncv7410_driver_s encapsulates all state information for a single hardware
- * interface
+/* The ncv7410_driver_s encapsulates all state information for a single
+ * hardware interface
  */
 
 enum ncv_ifstate_e
@@ -105,7 +105,8 @@ enum ncv_ifstate_e
 
 /* use this instead of read-modify-write when changing setup
  * e.g. when changing state up/down, can also server as a backup for
- * configuration, when MAC-PHY is reset unexpectedly, now not used */
+ * configuration, when MAC-PHY is reset unexpectedly, now not used
+ */
 
 struct ncv7410_registers_s
 {
@@ -118,7 +119,8 @@ struct ncv7410_registers_s
 struct ncv7410_driver_s
 {
   /* This holds the information visible to the NuttX network
-   * (must be placed first) */
+   * (must be placed first)
+   */
 
   struct netdev_lowerhalf_s dev;
 
@@ -235,12 +237,14 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq);
  * Name: ncv_interrupt
  *
  * Description:
- *   Schedule interrupt work when the interrupt signal from ncv7410 is received
+ *   Schedule interrupt work when the interrupt signal from ncv7410 is
+ *   received
  *
  * Input Parameters:
  *   irq     - not used
  *   context - not used
- *   arg     - ncv7410_driver_s priv structure to be passed to the interupt worker
+ *   arg     - ncv7410_driver_s priv structure to be passed to the interupt
+ *             worker
  *
  * Returned Value:
  *   zero
@@ -258,6 +262,7 @@ static int ncv_interrupt(int irq, FAR void *context, FAR void *arg)
   ninfo("ncv7410 interrupt!\n");
 
   /* schedule the work to be done */
+
   work_queue(NCVWORK, &priv->interrupt_work, ncv_interrupt_work, priv, 0);
   return 0;
 }
@@ -294,11 +299,13 @@ static void ncv_interrupt_work(FAR void *arg)
       nerr("polling footer unsuccesful\n");
       PANIC();
     }
+
   ncv_print_footer(footer);
 
-  /* find out the origin of the interrupt */
-  /* if EXST in the footer, check enabled sources */
-  /* STATUS0, link-status in clause 22 phy registers */
+  /* find out the origin of the interrupt
+   * if EXST in the footer, check enabled sources
+   * STATUS0, link-status in clause 22 phy registers
+   */
 
   /* update MAC-PHY buffer status */
 
@@ -308,6 +315,7 @@ static void ncv_interrupt_work(FAR void *arg)
   if ((priv->tx_pkt && priv->txc) || priv->rxa)
     {
       /* schedule IO work */
+
       work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
     }
 }
@@ -362,7 +370,9 @@ static void ncv_io_work(FAR void *arg)
         {
           txlen = NCV_CHUNK_DEFAULT_PAYLOAD_SIZE;
         }
-      netpkt_copyout(&priv->dev, txbuf, priv->tx_pkt, txlen, priv->tx_pkt_idx);
+
+      netpkt_copyout(&priv->dev, txbuf, priv->tx_pkt,
+                     txlen, priv->tx_pkt_idx);
       priv->tx_pkt_idx += txlen;
     }
 
@@ -374,13 +384,14 @@ static void ncv_io_work(FAR void *arg)
           ninfo("info: Failed to alloc rx netpkt\n");
 
           /* there is no buffer for potential rx data
-           * => rx receiving is disabled */
+           * => rx receiving is disabled
+           */
 
           header |= (1 << OA_NORX_POS);  /* no rx */
         }
     }
 
-  /* disable receiving if the rx packet is waiting to be received by network */
+  /* disable receiving if the rx packet is waiting to be claimed by network */
 
   if (priv->rx_pkt_ready)
     {
@@ -418,13 +429,19 @@ static void ncv_io_work(FAR void *arg)
         }
     }
 
-  if (data_valid(footer))  // note: this is OK when errors on SPI bus are NOT expected
-                           //       otherwise rx_pkt != NULL and !rx_pkt_ready should be checked
+  /* TODO: the following assumes MAC-PHY working correctly and no errors
+   * on SPI, if assumption valid, there cannot be DV flag in the footer
+   * if the receiving was disabled before, if this assumption is wrong
+   * rx_pkt != NULL and !rx_pkt_ready should be checked
+   */
+
+  if (data_valid(footer))
     {
       if (start_valid(footer))
         {
           priv->rx_pkt_idx = 0;
         }
+
       if (end_valid(footer))
         {
           rxlen = end_byte_offset(footer) + 1;
@@ -433,12 +450,15 @@ static void ncv_io_work(FAR void *arg)
         {
           rxlen = NCV_CHUNK_DEFAULT_PAYLOAD_SIZE;
         }
-      netpkt_copyin(&priv->dev, priv->rx_pkt, rxbuf, rxlen, priv->rx_pkt_idx);
+
+      netpkt_copyin(&priv->dev, priv->rx_pkt, rxbuf,
+                    rxlen, priv->rx_pkt_idx);
       priv->rx_pkt_idx += rxlen;
 
       if (end_valid(footer))
         {
           /* strip down last 4 bytes including FCS */
+
           netpkt_setdatalen(&priv->dev, priv->rx_pkt,
                             netpkt_getdatalen(&priv->dev, priv->rx_pkt) - 4);
           priv->rx_pkt_ready = true;
@@ -446,9 +466,14 @@ static void ncv_io_work(FAR void *arg)
         }
     }
 
-  // logic behind this is not yet fully done
-  // should I do a big while loop? or should I plan io_work using work_queue?
-  // what exact conditions must be met to plan the invokation?
+  /* logic behind this is not yet fully done
+   * should I do a big while loop? or should I plan io_work using work_queue?
+   * what exact conditions must be met to plan the invokation?
+   * TODO: this seems alright, but could this lead to infinite loop
+   * if the upperhalf takes too long to accept rx packet?
+   * because this loops when priv->rxa, but priv->rx_pkt == NULL
+   */
+
   if ((priv->tx_pkt && priv->txc) || priv->rxa)
     {
       work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
@@ -473,9 +498,10 @@ static void ncv_io_work(FAR void *arg)
 static int ncv_get_parity(uint32_t w)
 {
   /* www-graphics.stanford.edu/~seander/bithacks.html */
+
   w ^= w >> 1;
   w ^= w >> 2;
-  w = (w & 0x11111111U) * 0x11111111U;
+  w = (w & 0x11111111u) * 0x11111111u;
   return (w >> 28) & 1;
 }
 
@@ -495,11 +521,12 @@ static int ncv_get_parity(uint32_t w)
 
 uint8_t ncv_bitrev8(uint8_t b)
 {
-   /* https://stackoverflow.com/a/2602885 */
-   b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
-   b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
-   b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
-   return b;
+  /* https://stackoverflow.com/a/2602885 */
+
+  b = (b & 0xf0) >> 4 | (b & 0x0f) << 4;
+  b = (b & 0xcc) >> 2 | (b & 0x33) << 2;
+  b = (b & 0xaa) >> 1 | (b & 0x55) << 1;
+  return b;
 }
 
 /****************************************************************************
@@ -555,7 +582,7 @@ static inline void ncv_config_spi(FAR struct ncv7410_driver_s *priv)
 {
   SPI_SETMODE(priv->spi, OA_SPI_MODE);
   SPI_SETBITS(priv->spi, OA_SPI_NBITS);
-  SPI_HWFEATURES(priv->spi, 0);  // disable HW features
+  SPI_HWFEATURES(priv->spi, 0);  /* disable HW features */
   SPI_SETFREQUENCY(priv->spi, CONFIG_NCV7410_FREQUENCY);
 }
 
@@ -616,23 +643,26 @@ static inline void ncv_deselect_spi(FAR struct ncv7410_driver_s *priv)
 static int ncv_write_reg(FAR struct ncv7410_driver_s *priv,
                          oa_regid_t regid, uint32_t word)
 {
-  uint32_t txdata[3] = { 0 };
-  uint32_t rxdata[3] = { 0 };
+  uint32_t txdata[3];
+  uint32_t rxdata[3];
   uint8_t  mms  = OA_REGID_GET_MMS(regid);
   uint16_t addr = OA_REGID_GET_ADDR(regid);
 
-  // prepare header
-  uint32_t header =   (1    << OA_WNR_POS)   // write-not-read
-                    | (mms  << OA_MMS_POS)   // mms
-                    | (addr << OA_ADDR_POS); // address
-  int parity = ncv_get_parity(header);
-  header |= parity ? 0 : OA_P_MASK;  // make header odd parity
+  /* prepare header */
 
-  // convert to big endian
+  uint32_t header =   (1    << OA_WNR_POS)   /* Write Not Read */
+                    | (mms  << OA_MMS_POS)
+                    | (addr << OA_ADDR_POS);
+  int parity = ncv_get_parity(header);
+  header |= parity ? 0 : OA_P_MASK;  /* make header odd parity */
+
+  /* convert to big endian */
+
   header = htobe32(header);
   word = htobe32(word);
 
-  // prepare exchange
+  /* prepare exchange */
+
   txdata[0] = header;
   txdata[1] = word;
 
@@ -645,10 +675,11 @@ static int ncv_write_reg(FAR struct ncv7410_driver_s *priv,
   if (rxdata[1] != header)
     {
       nerr("Error writing register\n");
-      return 1;  // error
+      return ERROR;
     }
+
   ninfo("Writing register OK\n");
-  return 0;
+  return OK;
 }
 
 /****************************************************************************
@@ -670,23 +701,26 @@ static int ncv_write_reg(FAR struct ncv7410_driver_s *priv,
 static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
                         oa_regid_t regid, FAR uint32_t *word)
 {
-  uint32_t txdata[3] = { 0 };
-  uint32_t rxdata[3] = { 0 };
+  uint32_t txdata[3];
+  uint32_t rxdata[3];
   uint8_t  mms  = OA_REGID_GET_MMS(regid);
   uint16_t addr = OA_REGID_GET_ADDR(regid);
   int parity;
   uint32_t header;
 
-  // prepare header
-  header =   (mms  << OA_MMS_POS)   // mms
-           | (addr << OA_ADDR_POS); // address
-  parity = ncv_get_parity(header);
-  header |= parity ? 0 : OA_P_MASK;  // make header odd parity
+  /* prepare header */
 
-  // convert to big endian
+  header =   (mms  << OA_MMS_POS)
+           | (addr << OA_ADDR_POS);
+  parity = ncv_get_parity(header);
+  header |= parity ? 0 : OA_P_MASK;  /* make header odd parity */
+
+  /* convert to big endian */
+
   header = htobe32(header);
 
-  // prepare exchange
+  /* prepare exchange */
+
   txdata[0] = header;
 
   ncv_lock_spi(priv);
@@ -702,6 +736,7 @@ static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
       nerr("Error reading register\n");
       return ERROR;
     }
+
   ninfo("Reading register OK\n");
   return OK;
 }
@@ -710,7 +745,8 @@ static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
  * Name: ncv_poll_footer
  *
  * Description:
- *   poll a data transaction chunk footer without reading or writing frame data
+ *   poll a data transaction chunk footer while not reading nor writing
+ *   frame data
  *
  * Input Parameters:
  *   priv   - pointer to the driver specific data structure
@@ -724,13 +760,13 @@ static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
 static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
                            FAR uint32_t *footer)
 {
-  uint32_t txdata[NCV_CHUNK_DEFAULT_SIZE / 4] = { 0 };
-  uint32_t rxdata[NCV_CHUNK_DEFAULT_SIZE / 4] = { 0 };
+  uint32_t txdata[NCV_CHUNK_DEFAULT_SIZE / 4];
+  uint32_t rxdata[NCV_CHUNK_DEFAULT_SIZE / 4];
   uint32_t header;
   *footer = 0;
 
-  header =   (1 << OA_DNC_POS)   // Data Not Control
-           | (1 << OA_NORX_POS); // No Read
+  header =   (1 << OA_DNC_POS)   /* Data Not Control */
+           | (1 << OA_NORX_POS); /* No Read */
 
   header |= (!ncv_get_parity(header) << OA_P_POS);
   header = htobe32(header);
@@ -751,6 +787,7 @@ static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
       *footer = 0;
       return ERROR;
     }
+
   if (header_bad(*footer))
     {
       nerr("HDRB set in the footer\n");
@@ -793,7 +830,8 @@ static int ncv_exchange_chunk(FAR struct ncv7410_driver_s *priv,
   ncv_config_spi(priv);
   ncv_select_spi(priv);
   SPI_EXCHANGE(priv->spi, (uint8_t *) &header, rxbuf, 4);
-  SPI_EXCHANGE(priv->spi, txbuf, &rxbuf[4], NCV_CHUNK_DEFAULT_PAYLOAD_SIZE - 4);
+  SPI_EXCHANGE(priv->spi, txbuf,
+               &rxbuf[4], NCV_CHUNK_DEFAULT_PAYLOAD_SIZE - 4);
   SPI_EXCHANGE(priv->spi, &txbuf[NCV_CHUNK_DEFAULT_PAYLOAD_SIZE - 4],
                (uint8_t *) footer, 4);
   ncv_deselect_spi(priv);
@@ -805,11 +843,13 @@ static int ncv_exchange_chunk(FAR struct ncv7410_driver_s *priv,
       nerr("Wrong parity in the footer\n");
       return ERROR;
     }
+
   if (header_bad(*footer))
     {
       nerr("HDRB set in the footer\n");
       return ERROR;
     }
+
   return OK;
 }
 
@@ -845,6 +885,7 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
         }
     }
   while (tries-- && (regval & 1));
+
   if (regval & 1)
     {
       return ERROR;
@@ -873,21 +914,25 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
         {
           return ERROR;
         }
+
       nxsig_usleep(250000);
       regval = 0x0203;
       if (ncv_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
         {
           return ERROR;
         }
+
       nxsig_usleep(250000);
     }
 
-  // set DIOs to default
+  /* set DIOs to default */
+
   regval = 0x6060;
   if (ncv_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
     {
       return ERROR;
     }
+
   return OK;
 }
 
@@ -911,8 +956,9 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
 
   ninfo("Configuring ncv7410\n");
 
-  /* setup LEDs DIO0: txrx blink                      */
-  /*            DIO1: link enabled and link status up */
+  /* setup LEDs DIO0: txrx blink
+   *            DIO1: link enabled and link status up
+   */
 
   regval =   (NCV_DIO_TXRX_FUNC << NCV_DIO0_FUNC_POS)
            | (NCV_DIO_LINK_CTRL_FUNC << NCV_DIO1_FUNC_POS)
@@ -950,7 +996,7 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
 
   /* enable rx buffer overflow interrupt */
 
-  regval = 0x1FBF & ~(1 << OA_IMSK0_RXBOEM_POS);
+  regval = 0x1fbf & ~(1 << OA_IMSK0_RXBOEM_POS);
 
   if (ncv_write_reg(priv, OA_IMSK0_REGID, regval))
     {
@@ -1086,31 +1132,31 @@ static int ncv_disable(FAR struct ncv7410_driver_s *priv)
 static int ncv_init_mac_addr(FAR struct ncv7410_driver_s *priv)
 {
   uint32_t regval;
-  uint8_t  mac[6] = { 0 }; /* the MAC address is stored in LSB bit order */
+  uint8_t  mac[6];
 
   if (ncv_read_reg(priv, OA_PHYID_REGID, &regval))
     {
       return ERROR;
     }
 
-  mac[0] |= ncv_bitrev8(regval >> 26);
-  mac[1] |= ncv_bitrev8(regval >> 18);
-  mac[2] |= ncv_bitrev8(regval >> 10);
+  mac[0] = ncv_bitrev8(regval >> 26);
+  mac[1] = ncv_bitrev8(regval >> 18);
+  mac[2] = ncv_bitrev8(regval >> 10);
 
   if (ncv_read_reg(priv, NCV_MACID1_REGID, &regval))
     {
       return ERROR;
     }
 
-  mac[3] |= regval;
+  mac[3] = regval;
 
   if (ncv_read_reg(priv, NCV_MACID0_REGID, &regval))
     {
       return ERROR;
     }
 
-  mac[4] |= regval >> 8;
-  mac[5] |= regval;
+  mac[4] = regval >> 8;
+  mac[5] = regval;
 
   memcpy(&priv->dev.netdev.d_mac.ether, &mac, sizeof(struct ether_addr));
 
@@ -1149,9 +1195,9 @@ static void ncv_print_footer(uint32_t footer)
   ninfo("  TXC:  %d\n", tx_credits(footer));
 }
 
-/*****************************************************************************
+/****************************************************************************
  * Netdev upperhalf callbacks
- *****************************************************************************/
+ ****************************************************************************/
 
 /****************************************************************************
  * Name: ncv7410_ifup
@@ -1182,6 +1228,7 @@ static int ncv7410_ifup(FAR struct netdev_lowerhalf_s *dev)
           nerr("Error configuring ncv7410\n");
           return -EIO;
         }
+
       priv->ifstate = NCV_INIT_DOWN;
     }
 
@@ -1223,9 +1270,13 @@ static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
 
   priv->tx_pkt_idx = 0;
   priv->tx_pkt_len = netpkt_getdatalen(dev, pkt);
-  // maybe atomicity of the following operation and barrier here is needed
-  // or mutex
-  // for sync with work queue tasks
+
+  /* maybe atomicity of the following operation and barrier here is needed
+   * or mutex
+   * for sync with work queue tasks
+   * TODO: perform correct synchronization
+   */
+
   priv->tx_pkt = pkt;
   work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
   return OK;
@@ -1244,7 +1295,7 @@ static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev)
       priv->rx_pkt = NULL;
       return retval;
     }
-  /* nerr("Receive called when rx packet is not ready"); */
+
   return NULL;
 }
 
@@ -1262,9 +1313,9 @@ static int ncv7410_rmmac(FAR struct netdev_lowerhalf_s *dev,
 }
 #endif
 
-/*****************************************************************************
+/****************************************************************************
  * Private Data
- *****************************************************************************/
+ ****************************************************************************/
 
 static const struct netdev_ops_s g_ncv7410_ops =
 {
@@ -1279,7 +1330,7 @@ static const struct netdev_ops_s g_ncv7410_ops =
 #if CONFIG_NETDEV_WORK_THREAD_POLLING_PERIOD > 0
   .reclaim  = ncv7410_reclaim,
 #endif
-  // TODO: add ioctl
+  /* TODO: add ioctl */
 };
 
 /****************************************************************************
@@ -1295,7 +1346,7 @@ static const struct netdev_ops_s g_ncv7410_ops =
  *
  * Input Parameters:
  *   spi - A reference to the platform's SPI driver for the NCV7410
- *   irq - interrupt number of the pin connected to NCV7410's interrupt signal
+ *   irq - irq number of the pin connected to NCV7410's interrupt signal
  *
  * Returned Value:
  *   OK on success; Negated errno on failure.
@@ -1330,6 +1381,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq)
       retval = -EIO;
       goto errout;
     }
+
   priv->ifstate = NCV_RESET;
   ninfo("Resetting ncv7410 OK\n");
 
@@ -1339,6 +1391,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq)
       retval = -EIO;
       goto errout;
     }
+
   ninfo("Initializing MAC address OK\n");
 
   /* attach ISR */
@@ -1358,6 +1411,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq)
       ninfo("Succesfully registered ncv7410 network driver\n");
       return OK;
     }
+
   nerr("Error registering ncv7410 network driver: %d\n", retval);
 
 errout:
