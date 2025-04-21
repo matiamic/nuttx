@@ -30,25 +30,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/****************************************************************************
- * Pre-processor Definitions
- ****************************************************************************/
-
-/* NCV7410 Configuration Settings:
- *
- * CONFIG_NCV7410 - Enabled NCV7410 support
- * CONFIG_NCV7410_FREQUENCY - SPI interface frequency
- * CONFIG_NCV7410_NCV7410_DUMPPACKET - dump packets to the console
- */
-
-/****************************************************************************
- * Public Types
- ****************************************************************************/
-
-/****************************************************************************
- * Public Data
- ****************************************************************************/
-
 #ifdef __cplusplus
 #define EXTERN extern "C"
 extern "C"
@@ -70,7 +51,7 @@ extern "C"
  *
  * Input Parameters:
  *   spi - A reference to the platform's SPI driver for the NCV7410
- *   irq - interrupt number of the pin connected to NCV7410's interrupt signal
+ *   irq - irq number of the pin connected to NCV7410's interrupt signal
  *
  * Returned Value:
  *   OK on success; Negated errno on failure.
