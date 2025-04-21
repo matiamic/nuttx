@@ -81,6 +81,27 @@ All of the configurations presented below can be tested by running the following
 Where <config_name> is the name of board configuration you want to use, i.e.: nsh, buttons, wifi...
 Then use a serial console terminal like ``picocom`` configured to 115200 8N1.
 
+adc
+---
+
+The ``adc`` configuration enables the ADC driver and the ADC example application.
+ADC Unit 1 is registered to ``/dev/adc0`` with channels 0, 1, 2 and 3 enabled by default.
+Currently, the ADC operates in oneshot mode.
+
+More ADC channels can be enabled or disabled in ``ADC Configuration`` menu.
+
+This example shows channels 0 and 1 connected to 3.3 V and channels 2 and 3 to GND (all readings
+show in units of mV)::
+
+    nsh> adc -n 1
+    adc_main: g_adcstate.count: 1
+    adc_main: Hardware initialized. Opening the ADC device: /dev/adc0
+    Sample:
+    1: channel: 0 value: 3061
+    2: channel: 1 value: 3061
+    3: channel: 2 value: 106
+    4: channel: 3 value: 99
+
 audio
 -----
 
@@ -259,6 +280,42 @@ using slave driver:
        ret = write(i2c_slave_fd, buffer, 5);
        close(i2c_slave_fd);
     }
+
+i2schar
+-------
+
+This configuration enables the I2S character device and the i2schar example
+app, which provides an easy-to-use way of testing the I2S peripherals (I2S0
+and I2S1), enabling both the TX and the RX for those peripherals.
+
+**I2S0 pinout**
+
+============= ========== =========================================
+ESP32-S3 Pin  Signal Pin Description
+============= ========== =========================================
+0             MCLK       Master Clock
+4             BCLK       Bit Clock (SCLK)
+5             WS         Word Select (LRCLK)
+18            DOUT       Data Out
+19            DIN        Data IN
+============= ========== =========================================
+
+**I2S1 pinout**
+
+============= ========== =========================================
+ESP32-S3 Pin  Signal Pin Description
+============= ========== =========================================
+22            BCLK       Bit Clock (SCLK)
+23            WS         Word Select (LRCLK)
+25            DOUT       Data Out
+26            DIN        Data IN
+============= ========== =========================================
+
+After successfully built and flashed, run on the boards's terminal::
+
+    i2schar -p /dev/i2schar[0-1]
+
+The corresponding output should show related debug information.
 
 knsh
 ----
@@ -471,6 +528,40 @@ psram_octal
 Similar to the ```psram_quad``` configuration but using the SPIRAM
 interface in octal mode.
 
+psram_usrheap
+-------------
+
+This configuration enables allocating the userspace heap into SPI RAM and reserves the
+internal RAM for kernel heap.
+
+Important: this config defaults to flash QUAD mode, and should be changed if the board
+runs on OCTAL mode by setting ``CONFIG_ESP32S3_SPIRAM_MODE_OCT``. If wrong, a SPIRAM error
+will appear during boot.
+
+To check the flash type, run the following command::
+
+    $ esptool.py flash_id
+    esptool.py v4.8.1
+    Found 33 serial ports
+    Serial port /dev/ttyUSB0
+    Connecting....
+    Detecting chip type... ESP32-S3
+    Chip is ESP32-S3 (QFN56) (revision v0.1)
+    Features: WiFi, BLE, Embedded PSRAM 2MB (AP_3v3)
+    Crystal is 40MHz
+    MAC: 7c:df:a1:e5:d8:5c
+    Uploading stub...
+    Running stub...
+    Stub running...
+    Manufacturer: 20
+    Device: 4017
+    Detected flash size: 8MB
+    Flash type set in eFuse: quad (4 data lines)
+    Flash voltage set by eFuse to 3.3V
+    Hard resetting via RTS pin...
+
+The flash type can be seen on the "Flash type set in eFuse: quad" line.
+
 pwm
 ---
 
@@ -480,6 +571,16 @@ To test it, just execute the ``pwm`` application::
     nsh> pwm
     pwm_main: starting output with frequency: 10000 duty: 00008000
     pwm_main: stopping output
+
+python
+------
+
+This configuration enables the Python for ESP32-S3.
+Please refer to the :doc:`Python Interpreter </applications/interpreters/python/index>` page.
+
+.. warning:: Note that this defconfig uses a board with the ESP32-S3-WROOM-2 module with 32MiB
+  of flash and 8MiB of PSRAM. Running Python on ESP32-S3 requires at least 16MiB of flash and
+  8MiB of PSRAM.
 
 qemu_debug
 ----------

@@ -33,6 +33,11 @@ SECTIONS
 #ifdef CONFIG_ESP32S3_APP_FORMAT_MCUBOOT
   .metadata :
   {
+    /* The following metadata refers to the to MCUboot's struct
+     * esp_image_load_header defined at the following commit:
+     * https://github.com/mcu-tools/mcuboot/blob/cd22b693da426826e0255f8ee5b18d7360d9bc8f/boot/espressif/hal/include/esp_mcuboot_image.h
+     */
+
     /* Magic for load header */
 
     LONG(0xace637d3)
@@ -60,6 +65,46 @@ SECTIONS
     LONG(ADDR(.dram0.data))
     LONG(LOADADDR(.dram0.data))
     LONG(SIZEOF(.dram0.data))
+
+    /* RTC_IRAM metadata:
+     * - Destination address (VMA) for RTC_IRAM region
+     * - Flash offset (LMA) for start of RTC_IRAM region
+     * - Size of RTC_IRAM region
+     */
+
+    LONG(ADDR(.rtc.text))
+    LONG(LOADADDR(.rtc.text))
+    LONG(SIZEOF(.rtc.text))
+
+    /* RTC_DRAM metadata:
+     * - Destination address (VMA) for RTC_DRAM region
+     * - Flash offset (LMA) for start of RTC_DRAM region
+     * - Size of RTC_DRAM region
+     */
+
+    LONG(ADDR(.rtc.data))
+    LONG(LOADADDR(.rtc.data))
+    LONG(SIZEOF(.rtc.data))
+
+    /* IROM metadata:
+     * - Destination address (VMA) for IROM region
+     * - Flash offset (LMA) for start of IROM region
+     * - Size of IROM region
+     */
+
+    LONG(ADDR(.flash.text))
+    LONG(LOADADDR(.flash.text))
+    LONG(SIZEOF(.flash.text))
+
+    /* DROM metadata:
+     * - Destination address (VMA) for DROM region
+     * - Flash offset (LMA) for start of DROM region
+     * - Size of DROM region
+     */
+
+    LONG(ADDR(.flash.rodata))
+    LONG(LOADADDR(.flash.rodata))
+    LONG(LOADADDR(.flash.rodata) + SIZEOF(.flash.rodata) - LOADADDR(.flash.rodata))
   } >metadata
 #endif /* CONFIG_ESP32S3_APP_FORMAT_MCUBOOT */
 
@@ -236,6 +281,10 @@ SECTIONS
     *libarch.a:*cpu_region_protect.*(.text .text.* .literal .literal.*)
     *libarch.a:*mspi_timing_tuning.*(.text .text.* .literal .literal.*)
     *libarch.a:*esp_rom_cache_esp32s2_esp32s3.*(.literal .text .literal.* .text.*)
+    *libarch.a:*flash_qio_mode.*(.text .text.* .literal .literal.*)
+    *libarch.a:*spi_flash_wrap.*(.text .text.* .literal .literal.*)
+    *libarch.a:*spi_flash_oct_flash_init.*(.text .text.* .literal .literal.*)
+    *libarch.a:*spi_flash_hpm_enable.*(.text .text.* .literal .literal.*)
 
     *libc.a:*lib_instrument.*(.text .text.* .literal .literal.*)
 
@@ -303,8 +352,12 @@ SECTIONS
     . = ALIGN(8);
     _bss_start = ABSOLUTE(.);
     _sbss = ABSOLUTE(.);
-
+#ifdef CONFIG_XTENSA_EXTMEM_BSS
+    *(EXCLUDE_FILE(*libnet80211.a *libpp.a *libpython3.13.a) .bss EXCLUDE_FILE(*libnet80211.a *libpp.a *libpython3.13.a) .bss.*)
+    *(EXCLUDE_FILE(*libnet80211.a *libpp.a *libpython3.13.a) .bss EXCLUDE_FILE(*libnet80211.a *libpp.a *libpython3.13.a) COMMON)
+#else
     *(.bss .bss.*)
+#endif
     *(COMMON)
     *(.dynsbss)
     *(.sbss)
@@ -428,6 +481,10 @@ SECTIONS
 #ifdef CONFIG_ESP32S3_SPIRAM_MODE_OCT
     *libarch.a:esp32s3_psram_octal.*(.rodata .rodata.*)
 #endif
+    *libarch.a:*flash_qio_mode.*(.rodata .rodata.*)
+    *libarch.a:*spi_flash_wrap.*(.rodata .rodata.*)
+    *libarch.a:*spi_flash_oct_flash_init.*(.rodata .rodata.*)
+    *libarch.a:*spi_flash_hpm_enable.*(.rodata .rodata.*)
 
     . = ALIGN(4);
     _edata = ABSOLUTE(.);
@@ -602,6 +659,7 @@ SECTIONS
    * Because to `extern_ram_seg` and `drom0_0_seg` are on the same bus
    */
 
+#ifdef CONFIG_XTENSA_EXTMEM_BSS
   .ext_ram.dummy (NOLOAD):
   {
     . = ORIGIN(extern_ram_seg);
@@ -615,12 +673,18 @@ SECTIONS
   {
     _ext_ram_bss_start = ABSOLUTE(.);
 
+    *(.extmem.bss .extmem.bss.*)
     *(.ext_ram.bss .ext_ram.bss.*)
+    *libpp.a:(.bss .bss.*)
+    *libpp.a:(COMMON)
+    *libnet80211.a:(.bss .bss.*)
+    *libnet80211.a:(COMMON)
     *libpython3.13.a:(*.PyRuntime)
-
+    *libpython3.13.a:(.bss .bss.*)
     . = ALIGN(4);
     _ext_ram_bss_end = ABSOLUTE(.);
   } > extern_ram_seg
+#endif
 
   .rtc.text :
   {

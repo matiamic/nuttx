@@ -119,6 +119,31 @@ uint16_t can_callback(FAR struct net_driver_s *dev,
 
   if (conn)
     {
+#ifdef CONFIG_NET_TIMESTAMP
+          /* TIMESTAMP sockopt is activated,
+           * create timestamp and copy to iob
+           */
+
+          if (_SO_GETOPT(conn->sconn.s_options, SO_TIMESTAMP) &&
+            (dev->d_iob != NULL))
+            {
+              struct timeval tv;
+              FAR struct timespec *ts = (FAR struct timespec *)&tv;
+              int len;
+
+              clock_systime_timespec(ts);
+              tv.tv_usec = ts->tv_nsec / 1000;
+
+              len = iob_trycopyin(dev->d_iob, (FAR uint8_t *)&tv,
+                                  sizeof(struct timeval),
+                                  -CONFIG_NET_LL_GUARDSIZE, false);
+              if (len == sizeof(struct timeval))
+                {
+                  dev->d_len += len;
+                }
+            }
+#endif
+
       /* Try to lock the network when successful send data to the listener */
 
       if (net_trylock() == OK)
@@ -133,35 +158,6 @@ uint16_t can_callback(FAR struct net_driver_s *dev,
 
       if ((flags & CAN_NEWDATA) != 0)
         {
-#ifdef CONFIG_NET_TIMESTAMP
-          /* TIMESTAMP sockopt is activated,
-           * create timestamp and copy to iob
-           */
-
-          if (_SO_GETOPT(conn->sconn.s_options, SO_TIMESTAMP))
-            {
-              struct timeval tv;
-              FAR struct timespec *ts = (FAR struct timespec *)&tv;
-              int len;
-
-              clock_systime_timespec(ts);
-              tv.tv_usec = ts->tv_nsec / 1000;
-
-              len = iob_trycopyin(dev->d_iob, (FAR uint8_t *)&tv,
-                                  sizeof(struct timeval),
-                                  -CONFIG_NET_LL_GUARDSIZE, false);
-              if (len != sizeof(struct timeval))
-                {
-                  dev->d_len = 0;
-                  return flags & ~CAN_NEWDATA;
-                }
-              else
-                {
-                  dev->d_len += len;
-                }
-            }
-
-#endif
           /* Data was not handled.. dispose of it appropriately */
 
           flags = can_data_event(dev, conn, flags);

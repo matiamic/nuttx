@@ -130,8 +130,16 @@ struct cdcacm_dev_s
 
   /* Serial I/O req container */
 
+#ifdef CONFIG_CDCACM_DISABLE_RXBUF
   FAR struct cdcacm_rdreq_s *rdcontainer;
+#else
+  char rxbuffer[CONFIG_CDCACM_RXBUFSIZE];
+#endif
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
   FAR struct cdcacm_wrreq_s *wrcontainer;
+#else
+  char txbuffer[CONFIG_CDCACM_TXBUFSIZE];
+#endif
 };
 
 /* The internal version of the class driver */
@@ -157,7 +165,9 @@ struct cdcacm_alloc_s
 /* Transfer helpers *********************************************************/
 
 static int     cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv);
+#ifdef CONFIG_CDCACM_DISABLE_RXBUF
 static void    cdcacm_rcvpacket(FAR struct cdcacm_dev_s *priv);
+#endif
 static int     cdcacm_requeue_rdrequest(FAR struct cdcacm_dev_s *priv,
                  FAR struct cdcacm_rdreq_s *rdcontainer);
 static int     cdcacm_release_rxpending(FAR struct cdcacm_dev_s *priv);
@@ -229,10 +239,20 @@ static ssize_t cdcuart_recvbuf(FAR struct uart_dev_s *dev,
 static bool    cdcuart_txready(FAR struct uart_dev_s *dev);
 static ssize_t cdcuart_sendbuf(FAR struct uart_dev_s *dev,
                                FAR const void *buf, size_t len);
+#ifndef CONFIG_CDCACM_DISABLE_TXBUF
+static void    cdcuart_dmasend(FAR struct uart_dev_s *dev);
+#endif
+#ifndef CONFIG_CDCACM_DISABLE_RXBUF
+static void    cdcuart_dmareceive(FAR struct uart_dev_s *dev);
+#endif
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
+
+#ifdef CONFIG_SYSLOG_CDCACM
+static FAR struct cdcacm_dev_s *g_syslog_cdcacm;
+#endif
 
 /* USB class device *********************************************************/
 
@@ -267,10 +287,18 @@ static const struct uart_ops_s g_uartops =
   cdcuart_rxflowcontrol, /* rxflowcontrol */
 #endif
 #ifdef CONFIG_SERIAL_TXDMA
+#ifndef CONFIG_CDCACM_DISABLE_TXBUF
+  cdcuart_dmasend,       /* dmasend */
+#else
   NULL,                  /* dmasend */
 #endif
+#endif
 #ifdef CONFIG_SERIAL_RXDMA
+#ifndef CONFIG_CDCACM_DISABLE_RXBUF
+  cdcuart_dmareceive,    /* dmareceive */
+#else
   NULL,                  /* dmareceive */
+#endif
   NULL,                  /* dmarxfree */
 #endif
 #ifdef CONFIG_SERIAL_TXDMA
@@ -378,12 +406,15 @@ static ssize_t cdcuart_sendbuf(FAR struct uart_dev_s *dev,
 
 static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
 {
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
   FAR struct usbdev_ep_s *ep = priv->epbulkin;
   FAR struct uart_dev_s *dev = &priv->serdev;
   FAR struct cdcacm_wrreq_s *wrcontainer;
   FAR struct usbdev_req_s *req;
-  irqstate_t flags;
   int ret;
+#endif
+
+  irqstate_t flags;
 
 #ifdef CONFIG_DEBUG_FEATURES
   if (priv == NULL)
@@ -403,6 +434,7 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
         priv->serdev.xmit.head, priv->serdev.xmit.tail,
         priv->nwrq, sq_empty(&priv->txfree));
 
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
   if (priv->wrcontainer)
     {
       wrcontainer = priv->wrcontainer;
@@ -437,6 +469,12 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
       dev->xmit.tail = 0;
       uart_datasent(dev);
     }
+#else
+  if (!sq_empty(&priv->txfree))
+    {
+      uart_xmitchars_dma(&priv->serdev);
+    }
+#endif
 
 out:
   leave_critical_section(flags);
@@ -603,7 +641,14 @@ static int cdcacm_release_rxpending(FAR struct cdcacm_dev_s *priv)
 
       ret = OK;
 
+#ifndef CONFIG_CDCACM_DISABLE_RXBUF
+      if (!sq_empty(&priv->rxpending))
+        {
+          uart_recvchars_dma(&priv->serdev);
+        }
+#else
       cdcacm_rcvpacket(priv);
+#endif
     }
 
   /* Restart the RX failsafe timer if there are RX packets in
@@ -1089,7 +1134,9 @@ static void cdcacm_wrcomplete(FAR struct usbdev_ep_s *ep,
     case OK: /* Normal completion */
       {
         usbtrace(TRACE_CLASSWRCOMPLETE, priv->nwrq);
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
         if (priv->wrcontainer == NULL)
+#endif
           {
             cdcacm_sndpacket(priv);
           }
@@ -1324,11 +1371,13 @@ static int cdcacm_bind(FAR struct usbdevclass_driver_s *driver,
       leave_critical_section(flags);
     }
 
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
   priv->wrcontainer = (FAR struct cdcacm_wrreq_s *)
                       sq_remfirst(&priv->txfree);
   priv->serdev.xmit.buffer = (FAR char *)priv->wrcontainer->req->buf;
   priv->serdev.xmit.size   = reqlen + 1;
   priv->nwrq--;
+#endif
 
   /* Report if we are selfpowered (unless we are part of a
    * composite device)
@@ -2127,12 +2176,194 @@ static void cdcuart_detach(FAR struct uart_dev_s *dev)
 
 static int cdcuart_ioctl(FAR struct file *filep, int cmd, unsigned long arg)
 {
-  struct inode        *inode  = filep->f_inode;
-  struct cdcacm_dev_s *priv   = inode->i_private;
-  int                  ret    = OK;
+  FAR struct inode        *inode  = filep->f_inode;
+  FAR struct cdcacm_dev_s *priv   = inode->i_private;
+#if defined(CONFIG_CDCACM_DISABLE_TXBUF) || defined(CONFIG_CDCACM_DISABLE_RXBUF)
+  FAR struct uart_dev_s   *serdev = &priv->serdev;
+#endif
+  int                      ret    = OK;
 
   switch (cmd)
     {
+#ifdef CONFIG_CDCACM_DISABLE_RXBUF
+    /* Get the number of bytes that may be read from the RX buffer
+     * (without waiting)
+     */
+
+    case FIONREAD:
+      {
+        FAR struct cdcacm_rdreq_s *rdcontainer;
+        FAR sq_entry_t *entry;
+        int count;
+
+        irqstate_t flags = enter_critical_section();
+
+        /* Determine the number of bytes available in the RX buffer */
+
+        count = serdev->recv.head - serdev->recv.tail;
+
+        sq_for_every(&priv->rxpending, entry)
+          {
+            rdcontainer = (FAR struct cdcacm_rdreq_s *)entry;
+            count += rdcontainer->req->xfrd;
+          }
+
+        leave_critical_section(flags);
+
+        *(FAR int *)((uintptr_t)arg) = count;
+      }
+      break;
+#endif
+
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
+    /* Get the number of bytes that have been written to the TX
+     * buffer.
+     */
+
+    case FIONWRITE:
+      {
+        FAR struct cdcacm_wrreq_s *wrcontainer;
+        FAR sq_entry_t *entry;
+        int count;
+        int i;
+
+        irqstate_t flags = enter_critical_section();
+
+        /* Determine the number of bytes waiting in the TX buffer */
+
+        count = serdev->xmit.head - serdev->xmit.tail;
+
+        if (priv->nwrq < (CONFIG_CDCACM_NWRREQS - 1))
+          {
+            for (i = 0; i < CONFIG_CDCACM_NWRREQS; i++)
+              {
+                sq_for_every(&priv->txfree, entry)
+                  {
+                    wrcontainer = (FAR struct cdcacm_wrreq_s *)entry;
+                    if (&priv->wrreqs[i] == wrcontainer)
+                      {
+                        continue;
+                      }
+                    else if (&priv->wrreqs[i] != priv->wrcontainer)
+                      {
+                        count += priv->wrreqs[i].req->len;
+                      }
+                  }
+              }
+          }
+
+        leave_critical_section(flags);
+
+        *(FAR int *)((uintptr_t)arg) = count;
+      }
+      break;
+
+    /* Get the number of free bytes in the TX buffer */
+
+    case FIONSPACE:
+      {
+        FAR sq_entry_t *entry;
+        int count = 0;
+
+        irqstate_t flags = enter_critical_section();
+
+        /* Determine the number of bytes free in the TX buffer */
+
+        if (serdev->xmit.head == 0)
+          {
+            count = serdev->xmit.size - 1;
+          }
+
+        sq_for_every(&priv->txfree, entry)
+          {
+            count += serdev->xmit.size - 1;
+          }
+
+        leave_critical_section(flags);
+
+        *(FAR int *)((uintptr_t)arg) = count;
+      }
+      break;
+#endif
+
+    case TCFLSH:
+      {
+        ret = -ENOTTY;
+
+        /* Empty the tx/rx buffers */
+
+#ifdef CONFIG_CDCACM_DISABLE_RXBUF
+        if (arg == TCIFLUSH || arg == TCIOFLUSH)
+          {
+            FAR struct cdcacm_rdreq_s *rdcontainer;
+            ret = OK;
+
+            irqstate_t flags = enter_critical_section();
+
+            if (priv->rdcontainer)
+              {
+                sq_addlast((FAR sq_entry_t *)priv->rdcontainer,
+                           &priv->rxpending);
+                priv->rdcontainer = NULL;
+              }
+
+            while (!sq_empty(&priv->rxpending))
+              {
+                 rdcontainer = (FAR struct cdcacm_rdreq_s *)
+                               sq_remfirst(&priv->rxpending);
+                 ret = cdcacm_requeue_rdrequest(priv, rdcontainer);
+              }
+
+            serdev->recv.head = 0;
+            serdev->recv.tail = 0;
+
+#ifdef CONFIG_SERIAL_IFLOWCONTROL
+            /* De-activate RX flow control. */
+
+            uart_rxflowcontrol(serdev, 0, false);
+#endif
+            leave_critical_section(flags);
+          }
+#endif
+
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
+        if (arg == TCOFLUSH || arg == TCIOFLUSH)
+          {
+            irqstate_t flags = enter_critical_section();
+            ret = OK;
+
+            if (priv->wrcontainer)
+              {
+                serdev->xmit.head = 0;
+                serdev->xmit.tail = 0;
+
+                /* Inform any waiters there is space available. */
+
+                uart_datasent(serdev);
+              }
+            else if(priv->nwrq > 0)
+              {
+                priv->wrcontainer = (FAR struct cdcacm_wrreq_s *)
+                                    sq_remfirst(&priv->txfree);
+                serdev->xmit.buffer =
+                         (FAR char *)priv->wrcontainer->req->buf;
+                priv->nwrq--;
+                serdev->xmit.head = 0;
+                serdev->xmit.tail = 0;
+
+                uart_datasent(serdev);
+              }
+            else
+              {
+                ret = -EBUSY;
+              }
+
+            leave_critical_section(flags);
+          }
+#endif
+      }
+      break;
+
     /* CAICO_REGISTERCB
      *   Register a callback for serial event notification. Argument:
      *   cdcacm_callback_t.  See cdcacm_callback_t type definition below.
@@ -2671,11 +2902,17 @@ static bool cdcuart_txempty(FAR struct uart_dev_s *dev)
 
   /* When all of the allocated write requests have been returned to the
    * txfree, then there is no longer any TX data in flight.
-   * dev->xmit.buffer always take one req, so just compare
+   */
+
+#ifdef CONFIG_CDCACM_DISABLE_TXBUF
+  /* dev->xmit.buffer always take one req, so just compare
    * CONFIG_CDCACM_NWRREQS - 1.
    */
 
   empty = priv->nwrq >= (CONFIG_CDCACM_NWRREQS - 1);
+#else
+  empty = priv->nwrq >= CONFIG_CDCACM_NWRREQS;
+#endif
   leave_critical_section(flags);
 
   return empty;
@@ -2702,6 +2939,123 @@ static int cdcuart_release(FAR struct uart_dev_s *dev)
   kmm_free(priv);
   return OK;
 }
+
+#ifndef CONFIG_CDCACM_DISABLE_TXBUF
+
+/****************************************************************************
+ * Name: cdcuart_dmasend
+ *
+ * Description:
+ *   Set up to transfer bytes from the TX circular buffer.
+ *
+ ****************************************************************************/
+
+static void cdcuart_dmasend(FAR struct uart_dev_s *dev)
+{
+  FAR struct uart_dmaxfer_s *xfer = &dev->dmatx;
+  FAR struct cdcacm_dev_s *priv = dev->priv;
+  FAR struct usbdev_ep_s *ep = priv->epbulkin;
+  FAR struct cdcacm_wrreq_s *wrcontainer;
+  FAR struct usbdev_req_s *req;
+  size_t nbytes;
+  size_t reqlen;
+  int ret;
+
+  /* Get the maximum number of bytes that will fit into one bulk IN request */
+
+  reqlen = MIN(CONFIG_CDCACM_BULKIN_REQLEN, ep->maxpacket);
+
+  /* Peek at the request in the container at the head of the list */
+
+  wrcontainer = (FAR struct cdcacm_wrreq_s *)sq_remfirst(&priv->txfree);
+  req = wrcontainer->req;
+  priv->nwrq--;
+
+  /* Fill the request with serial TX data */
+
+  nbytes = MIN(reqlen, xfer->length);
+  memcpy(req->buf, xfer->buffer, nbytes);
+  req->len = nbytes;
+
+  nbytes = MIN(reqlen - nbytes, xfer->nlength);
+  memcpy(req->buf + req->len, xfer->nbuffer, nbytes);
+  req->len += nbytes;
+  xfer->nbytes = req->len;
+
+  uart_xmitchars_done(dev);
+
+  /* Then submit the request to the endpoint */
+
+  req->priv  = wrcontainer;
+  req->flags = USBDEV_REQFLAGS_NULLPKT;
+  ret        = EP_SUBMIT(ep, req);
+  if (ret < 0)
+    {
+      usbtrace(TRACE_CLSERROR(USBSER_TRACEERR_SUBMITFAIL),
+               (uint16_t)-ret);
+    }
+}
+#endif
+
+#ifndef CONFIG_CDCACM_DISABLE_RXBUF
+
+/****************************************************************************
+ * Name: cdcuart_dmareceive
+ *
+ * Description:
+ *   Set up to receive bytes into the RX circular buffer.
+ *
+ ****************************************************************************/
+
+static void cdcuart_dmareceive(FAR struct uart_dev_s *dev)
+{
+  FAR struct uart_dmaxfer_s *xfer = &dev->dmarx;
+  FAR struct cdcacm_dev_s *priv = dev->priv;
+  FAR struct cdcacm_rdreq_s *rdcontainer;
+  FAR struct usbdev_req_s *req;
+  FAR uint8_t *reqbuf;
+  size_t nbytes = 0;
+  size_t reqlen;
+
+  /* Process each packet in the priv->rxpending list */
+
+  rdcontainer = (FAR struct cdcacm_rdreq_s *)
+    sq_peek(&priv->rxpending);
+  DEBUGASSERT(rdcontainer != NULL);
+
+  req = rdcontainer->req;
+  DEBUGASSERT(req != NULL);
+
+  reqbuf = &req->buf[rdcontainer->offset];
+  reqlen = req->xfrd - rdcontainer->offset;
+
+  nbytes = MIN(reqlen, xfer->length);
+  memcpy(xfer->buffer, reqbuf, nbytes);
+  rdcontainer->offset += nbytes;
+  xfer->nbytes = nbytes;
+
+  if (xfer->nbuffer)
+    {
+      nbytes = MIN(reqlen - nbytes, xfer->nlength);
+      memcpy(xfer->nbuffer, reqbuf + xfer->nbytes, nbytes);
+      rdcontainer->offset += nbytes;
+      xfer->nbytes += nbytes;
+    }
+
+  uart_recvchars_done(dev);
+
+  /* The entire packet was processed and may be removed from the
+   * pending RX list.
+   */
+
+  if (rdcontainer->offset >= rdcontainer->req->xfrd)
+    {
+      sq_remfirst(&priv->rxpending);
+      cdcacm_requeue_rdrequest(priv, rdcontainer);
+    }
+}
+
+#else
 
 /****************************************************************************
  * Name: cdcacm_rcvpacket
@@ -2747,9 +3101,81 @@ static void cdcacm_rcvpacket(FAR struct cdcacm_dev_s *priv)
     }
 }
 
+#endif
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
+
+#ifdef CONFIG_SYSLOG_CDCACM
+/****************************************************************************
+ * Name: cdcacm_write
+ *
+ * Description:
+ *   This provides a cdcacm write method for syslog devices that support
+ *   multiple byte writes
+ *
+ * Input Parameters:
+ *   buffer - The buffer containing the data to be output
+ *   buflen - The number of bytes in the buffer
+ *
+ * Returned Value:
+ *   On success, the number of characters written is returned.  A negated
+ *   errno value is returned on any failure.
+ *
+ ****************************************************************************/
+
+ssize_t cdcacm_write(FAR const char *buffer, size_t buflen)
+{
+  FAR struct cdcacm_dev_s *priv = g_syslog_cdcacm;
+  size_t len = 0;
+
+  while (len < buflen)
+    {
+      irqstate_t flags;
+
+      if (!priv || !priv->ctrlline)
+        {
+          return -EINVAL;
+        }
+
+      flags = enter_critical_section();
+
+      if (cdcuart_txready(&priv->serdev))
+        {
+          ssize_t ret = cdcuart_sendbuf(&priv->serdev,
+                                        buffer + len,
+                                        buflen - len);
+          if (ret < 0)
+            {
+              leave_critical_section(flags);
+              return ret;
+            }
+
+          len += ret;
+        }
+
+      leave_critical_section(flags);
+    }
+
+  return buflen;
+}
+
+/****************************************************************************
+ * Name: cdcacm_disable_syslog
+ *
+ * Description:
+ *   Disable CDCACM syslog channel by clearing the globle pointer.
+ *   This function is used in specific situation, such as must disable
+ *   cdcacm log printing when usb re-enumeration.
+ *
+ ****************************************************************************/
+
+void cdcacm_disable_syslog(void)
+{
+  g_syslog_cdcacm = NULL;
+}
+#endif
 
 /****************************************************************************
  * Name: cdcacm_classobject
@@ -2833,6 +3259,14 @@ int cdcacm_classobject(int minor, FAR struct usbdev_devinfo_s *devinfo,
 #ifdef CONFIG_SERIAL_REMOVABLE
   priv->serdev.disconnected = true;
 #endif
+#ifndef CONFIG_CDCACM_DISABLE_RXBUF
+  priv->serdev.recv.size    = CONFIG_CDCACM_RXBUFSIZE;
+  priv->serdev.recv.buffer  = priv->rxbuffer;
+#endif
+#ifndef CONFIG_CDCACM_DISABLE_TXBUF
+  priv->serdev.xmit.size    = CONFIG_CDCACM_TXBUFSIZE;
+  priv->serdev.xmit.buffer  = priv->txbuffer;
+#endif
   priv->serdev.ops          = &g_uartops;
   priv->serdev.priv         = priv;
 
@@ -2876,6 +3310,14 @@ int cdcacm_classobject(int minor, FAR struct usbdev_devinfo_s *devinfo,
     }
 
   *classdev = &drvr->drvr;
+
+#ifdef CONFIG_SYSLOG_CDCACM
+  if (minor == CONFIG_SYSLOG_CDCACM_MINOR)
+    {
+      g_syslog_cdcacm = priv;
+    }
+#endif
+
   return OK;
 
 errout_with_class:
@@ -2990,6 +3432,13 @@ void cdcacm_uninitialize(FAR struct usbdevclass_driver_s *classdev)
   FAR struct cdcacm_dev_s    *priv = drvr->dev;
   char devname[CDCACM_DEVNAME_SIZE];
   int ret;
+
+#ifdef CONFIG_SYSLOG_CDCACM
+  if (g_syslog_cdcacm == priv)
+    {
+      g_syslog_cdcacm = NULL;
+    }
+#endif
 
   /* Disconnect in case we are connected */
 

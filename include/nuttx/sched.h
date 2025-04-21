@@ -155,9 +155,6 @@
  */
 
 #if !defined(CONFIG_BUILD_FLAT) && defined(__KERNEL__)
-#  define _SCHED_GETTID()            nxsched_gettid()
-#  define _SCHED_GETPID()            nxsched_getpid()
-#  define _SCHED_GETPPID()           nxsched_getppid()
 #  define _SCHED_GETPARAM(t,p)       nxsched_get_param(t,p)
 #  define _SCHED_SETPARAM(t,p)       nxsched_set_param(t,p)
 #  define _SCHED_GETSCHEDULER(t)     nxsched_get_scheduler(t)
@@ -167,9 +164,6 @@
 #  define _SCHED_ERRNO(r)            (-(r))
 #  define _SCHED_ERRVAL(r)           (r)
 #else
-#  define _SCHED_GETTID()            gettid()
-#  define _SCHED_GETPID()            getpid()
-#  define _SCHED_GETPPID()           getppid()
 #  define _SCHED_GETPARAM(t,p)       sched_getparam(t,p)
 #  define _SCHED_SETPARAM(t,p)       sched_setparam(t,p)
 #  define _SCHED_GETSCHEDULER(t)     sched_getscheduler(t)
@@ -178,6 +172,16 @@
 #  define _SCHED_SETAFFINITY(t,c,m)  sched_setaffinity(t,c,m)
 #  define _SCHED_ERRNO(r)            errno
 #  define _SCHED_ERRVAL(r)           (-errno)
+#endif
+
+#if defined(CONFIG_BUILD_FLAT) || defined(__KERNEL__)
+#  define _SCHED_GETTID()            nxsched_gettid()
+#  define _SCHED_GETPID()            nxsched_getpid()
+#  define _SCHED_GETPPID()           nxsched_getppid()
+#else
+#  define _SCHED_GETTID()            gettid()
+#  define _SCHED_GETPID()            getpid()
+#  define _SCHED_GETPPID()           getppid()
 #endif
 
 #define TCB_PID_OFF                  offsetof(struct tcb_s, pid)
@@ -292,12 +296,6 @@ union entry_u
 };
 
 typedef union entry_u entry_t;
-
-/* This is the type of the function called at task startup */
-
-#ifdef CONFIG_SCHED_STARTHOOK
-typedef CODE void (*starthook_t)(FAR void *arg);
-#endif
 
 /* struct sporadic_s ********************************************************/
 
@@ -740,13 +738,6 @@ struct task_tcb_s
   /* Task Group *************************************************************/
 
   struct task_group_s group;             /* Shared task group data          */
-
-  /* Task Management Fields *************************************************/
-
-#ifdef CONFIG_SCHED_STARTHOOK
-  starthook_t starthook;                 /* Task startup function           */
-  FAR void *starthookarg;                /* The argument passed to the hook */
-#endif
 };
 
 /* struct pthread_tcb_s *****************************************************/
@@ -1124,30 +1115,6 @@ int nxtask_delete(pid_t pid);
  ****************************************************************************/
 
 void nxtask_activate(FAR struct tcb_s *tcb);
-
-/****************************************************************************
- * Name: nxtask_starthook
- *
- * Description:
- *   Configure a start hook... a function that will be called on the thread
- *   of the new task before the new task's main entry point is called.
- *   The start hook is useful, for example, for setting up automatic
- *   configuration of C++ constructors.
- *
- * Input Parameters:
- *   tcb - The new, unstarted task task that needs the start hook
- *   starthook - The pointer to the start hook function
- *   arg - The argument to pass to the start hook function.
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
-#ifdef CONFIG_SCHED_STARTHOOK
-void nxtask_starthook(FAR struct task_tcb_s *tcb, starthook_t starthook,
-                      FAR void *arg);
-#endif
 
 /****************************************************************************
  * Name: nxtask_startup

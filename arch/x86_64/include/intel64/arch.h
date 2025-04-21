@@ -205,6 +205,9 @@
 #define HUGE_PAGE_SIZE                 (0x200000)
 #  define HUGE_PAGE_MASK               (~(HUGE_PAGE_SIZE - 1))
 
+#define HUGE_PAGE_SIZE_1G              (0x40000000)
+#  define HUGE_PAGE_MASK_1G            (~(HUGE_PAGE_SIZE_1G - 1))
+
 /* Kernel mapping - lower 1GB maps to 4GB-5GB */
 
 #define X86_PDPT_KERNEL_MAP            (X86_PAGE_GLOBAL | X86_PAGE_WR | \
@@ -240,6 +243,7 @@
 #  define X86_64_CPUID_07_AVX512VL     (1 << 31)
 #define X86_64_CPUID_XSAVE             0x0d
 #define X86_64_CPUID_TSC               0x15
+#define X86_64_CPUID_TSC_VMWARE        0x40000010
 #define X86_64_CPUID_EXTINFO           0x80000001
 #  define X86_64_CPUID_EXTINFO_RDTSCP  (1 << 27)
 
