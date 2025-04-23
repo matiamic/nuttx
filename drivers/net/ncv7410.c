@@ -51,23 +51,9 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-/* Configuration ************************************************************/
-
-/* NCV7410 Configuration Settings:
- *
- * CONFIG_NCV7410           - Enabled NCV7410 support
- * CONFIG_NCV7410_FREQUENCY - Define to use a different bus frequency
- * CONFIG_NCV7410_INT_PIN   - Pin used for MAC-PHY interrupt signal
- */
-
 #define NCVWORK LPWORK
 
 /* Packet Memory ************************************************************/
-
-/* TODO: make this make sense */
-
-#define NCV7410_PKTBUF_SIZE     100 //2048
-#define NCV7410_PKTBUF_SIZE     100 //2048
 
 /* Maximum number of allocated tx and rx packets */
 
@@ -78,13 +64,11 @@
 #  error CONFIG_IOB_NBUFFERS must be > (NCV7410_TX_QUOTA + NCV7410_RX_QUOTA)
 #endif
 
-#if CONFIG_IOB_BUFSIZE < NCV7410_PKTBUF_SIZE
-#  error CONFIG_IOB_BUFSIZE must be > NCV7410_PKTBUF_SIZE
-#endif
-
 #ifndef CONFIG_SCHED_LPWORK
 #  error CONFIG_SCHED_LPWORK is needed by NCV7410 driver
 #endif
+
+/****************************************************************************/
 
 #define NCV_RESET_TRIES 5
 
@@ -309,8 +293,8 @@ static void ncv_interrupt_work(FAR void *arg)
 
   /* update MAC-PHY buffer status */
 
-  priv->txc = tx_credits(footer);
-  priv->rxa = rx_available(footer);
+  priv->txc = oa_tx_credits(footer);
+  priv->rxa = oa_rx_available(footer);
 
   if ((priv->tx_pkt && priv->txc) || priv->rxa)
     {
@@ -417,10 +401,10 @@ static void ncv_io_work(FAR void *arg)
 
   /* update buffer status */
 
-  priv->txc = tx_credits(footer);
-  priv->rxa = rx_available(footer);
+  priv->txc = oa_tx_credits(footer);
+  priv->rxa = oa_rx_available(footer);
 
-  if (frame_drop(footer))
+  if (oa_frame_drop(footer))
     {
       if (priv->rx_pkt)
         {
@@ -435,16 +419,16 @@ static void ncv_io_work(FAR void *arg)
    * rx_pkt != NULL and !rx_pkt_ready should be checked
    */
 
-  if (data_valid(footer))
+  if (oa_data_valid(footer))
     {
-      if (start_valid(footer))
+      if (oa_start_valid(footer))
         {
           priv->rx_pkt_idx = 0;
         }
 
-      if (end_valid(footer))
+      if (oa_end_valid(footer))
         {
-          rxlen = end_byte_offset(footer) + 1;
+          rxlen = oa_end_byte_offset(footer) + 1;
         }
       else
         {
@@ -455,7 +439,7 @@ static void ncv_io_work(FAR void *arg)
                     rxlen, priv->rx_pkt_idx);
       priv->rx_pkt_idx += rxlen;
 
-      if (end_valid(footer))
+      if (oa_end_valid(footer))
         {
           /* strip down last 4 bytes including FCS */
 
@@ -788,7 +772,7 @@ static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
       return ERROR;
     }
 
-  if (header_bad(*footer))
+  if (oa_header_bad(*footer))
     {
       nerr("HDRB set in the footer\n");
       *footer = 0;
@@ -844,7 +828,7 @@ static int ncv_exchange_chunk(FAR struct ncv7410_driver_s *priv,
       return ERROR;
     }
 
-  if (header_bad(*footer))
+  if (oa_header_bad(*footer))
     {
       nerr("HDRB set in the footer\n");
       return ERROR;
@@ -1180,19 +1164,19 @@ static int ncv_init_mac_addr(FAR struct ncv7410_driver_s *priv)
 static void ncv_print_footer(uint32_t footer)
 {
   ninfo("Footer:\n");
-  ninfo("  EXST: %d\n", ext_status(footer));
-  ninfo("  HDRB: %d\n", header_bad(footer));
-  ninfo("  SYNC: %d\n", mac_phy_sync(footer));
-  ninfo("  RCA:  %d\n", rx_available(footer));
-  ninfo("  DV:   %d\n", data_valid(footer));
-  ninfo("  SV:   %d\n", start_valid(footer));
-  ninfo("  SWO:  %d\n", start_word_offset(footer));
-  ninfo("  FD:   %d\n", frame_drop(footer));
-  ninfo("  EV:   %d\n", end_valid(footer));
-  ninfo("  EBO:  %d\n", end_byte_offset(footer));
-  ninfo("  RTSA: %d\n", rx_frame_timestamp_added(footer));
-  ninfo("  RTSP: %d\n", rx_frame_timestamp_parity(footer));
-  ninfo("  TXC:  %d\n", tx_credits(footer));
+  ninfo("  EXST: %d\n", oa_ext_status(footer));
+  ninfo("  HDRB: %d\n", oa_header_bad(footer));
+  ninfo("  SYNC: %d\n", oa_mac_phy_sync(footer));
+  ninfo("  RCA:  %d\n", oa_rx_available(footer));
+  ninfo("  DV:   %d\n", oa_data_valid(footer));
+  ninfo("  SV:   %d\n", oa_start_valid(footer));
+  ninfo("  SWO:  %d\n", oa_start_word_offset(footer));
+  ninfo("  FD:   %d\n", oa_frame_drop(footer));
+  ninfo("  EV:   %d\n", oa_end_valid(footer));
+  ninfo("  EBO:  %d\n", oa_end_byte_offset(footer));
+  ninfo("  RTSA: %d\n", oa_rx_frame_timestamp_added(footer));
+  ninfo("  RTSP: %d\n", oa_rx_frame_timestamp_parity(footer));
+  ninfo("  TXC:  %d\n", oa_tx_credits(footer));
 }
 
 /****************************************************************************

@@ -257,67 +257,67 @@ typedef uint32_t oa_regid_t;
  * Public Function Prototypes
  ****************************************************************************/
 
-static inline int tx_credits(uint32_t footer)
+static inline int oa_tx_credits(uint32_t footer)
 {
   return (footer & OA_TXC_MASK) >> OA_TXC_POS;
 }
 
-static inline int rx_available(uint32_t footer)
+static inline int oa_rx_available(uint32_t footer)
 {
   return (footer & OA_RCA_MASK) >> OA_RCA_POS;
 }
 
-static inline int header_bad(uint32_t footer)
+static inline int oa_header_bad(uint32_t footer)
 {
   return (footer & OA_HDRB_MASK) >> OA_HDRB_POS;
 }
 
-static inline int ext_status(uint32_t footer)
+static inline int oa_ext_status(uint32_t footer)
 {
   return (footer & OA_EXST_MASK) >> OA_EXST_POS;
 }
 
-static inline int data_valid(uint32_t footer)
+static inline int oa_data_valid(uint32_t footer)
 {
   return (footer & OA_DV_MASK) >> OA_DV_POS;
 }
 
-static inline int start_valid(uint32_t footer)
+static inline int oa_start_valid(uint32_t footer)
 {
   return (footer & OA_SV_MASK) >> OA_SV_POS;
 }
 
-static inline int start_word_offset(uint32_t footer)
+static inline int oa_start_word_offset(uint32_t footer)
 {
   return (footer & OA_SWO_MASK) >> OA_SWO_POS;
 }
 
-static inline int end_valid(uint32_t footer)
+static inline int oa_end_valid(uint32_t footer)
 {
   return (footer & OA_EV_MASK) >> OA_EV_POS;
 }
 
-static inline int end_byte_offset(uint32_t footer)
+static inline int oa_end_byte_offset(uint32_t footer)
 {
   return (footer & OA_EBO_MASK) >> OA_EBO_POS;
 }
 
-static inline int frame_drop(uint32_t footer)
+static inline int oa_frame_drop(uint32_t footer)
 {
   return (footer & OA_FD_MASK) >> OA_FD_POS;
 }
 
-static inline int rx_frame_timestamp_added(uint32_t footer)
+static inline int oa_rx_frame_timestamp_added(uint32_t footer)
 {
   return (footer & OA_RTSA_MASK) >> OA_RTSA_POS;
 }
 
-static inline int rx_frame_timestamp_parity(uint32_t footer)
+static inline int oa_rx_frame_timestamp_parity(uint32_t footer)
 {
   return (footer & OA_RTSP_MASK) >> OA_RTSP_POS;
 }
 
-static inline int mac_phy_sync(uint32_t footer)
+static inline int oa_mac_phy_sync(uint32_t footer)
 {
   return (footer & OA_SYNC_MASK) >> OA_SYNC_POS;
 }
