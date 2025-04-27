@@ -121,6 +121,7 @@ typedef uint32_t oa_regid_t;
 #define OA_IMSK0_MMS              0
 #define OA_IMSK0_ADDR             0xCU
 #define OA_IMSK0_REGID            OA_MAKE_REGID(OA_IMSK0_MMS, OA_IMSK0_ADDR)
+#define OA_IMSK0_DEF              0x1FBFU
 #define OA_IMSK0_PHYINTM_MASK     BIT(7)
 #define OA_IMSK0_PHYINTM_POS      7
 #define OA_IMSK0_RXBOEM_MASK      BIT(3)
@@ -147,6 +148,7 @@ typedef uint32_t oa_regid_t;
 #define NCV_DIO_CONFIG_MMS        12
 #define NCV_DIO_CONFIG_ADDR       0x0012U
 #define NCV_DIO_CONFIG_REGID      OA_MAKE_REGID(NCV_DIO_CONFIG_MMS, NCV_DIO_CONFIG_ADDR)
+#define NCV_DIO_CONFIG_DEF        0x6060
 #define NCV_DIO0_FUNC_POS         1
 #define NCV_DIO1_FUNC_POS         9
 #define NCV_DIO0_OUT_VAL_POS      0

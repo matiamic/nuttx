@@ -1027,7 +1027,7 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
 
   /* set DIOs to default */
 
-  regval = 0x6060;
+  regval = NCV_DIO_CONFIG_DEF;
   if (ncv_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
     {
       return ERROR;
@@ -1096,7 +1096,7 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
 
   /* enable rx buffer overflow interrupt */
 
-  regval = 0x1fbf & ~(1 << OA_IMSK0_RXBOEM_POS);
+  regval = OA_IMSK0_DEF & ~(1 << OA_IMSK0_RXBOEM_POS);
 
   if (ncv_write_reg(priv, OA_IMSK0_REGID, regval))
     {
