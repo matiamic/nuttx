@@ -109,10 +109,10 @@ typedef uint32_t oa_regid_t;
 #define OA_STATUS0_MMS            0
 #define OA_STATUS0_ADDR           0x8U
 #define OA_STATUS0_REGID          OA_MAKE_REGID(OA_STATUS0_MMS, OA_STATUS0_ADDR)
-#define OA_STATUS0_HDRE_MASK      BIT(5)
-#define OA_STATUS0_HDRE_POS       5
 #define OA_STATUS0_RESETC_MASK    BIT(6)
 #define OA_STATUS0_RESETC_POS     6
+#define OA_STATUS0_HDRE_MASK      BIT(5)
+#define OA_STATUS0_HDRE_POS       5
 
 #define OA_BUFSTS_MMS             0
 #define OA_BUFSTS_ADDR            0xBU

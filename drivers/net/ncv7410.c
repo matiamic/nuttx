@@ -957,6 +957,8 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
       return ERROR;
     }
 
+  /* check that the RESET bit cleared itself */
+
   do
     {
       if (ncv_read_reg(priv, OA_RESET_REGID, &regval))
@@ -964,9 +966,27 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
           return ERROR;
         }
     }
-  while (tries-- && (regval & 1));
+  while (tries-- && (regval & OA_RESET_SWRESET_MASK));
 
-  if (regval & 1)
+  if (regval & OA_RESET_SWRESET_MASK)
+    {
+      return ERROR;
+    }
+
+  /* check thta the reset complete flag is set */
+
+  tries = NCV_RESET_TRIES;
+
+  do
+    {
+      if (ncv_read_reg(priv, OA_STATUS0_REGID, &regval))
+        {
+          return ERROR;
+        }
+    }
+  while (tries-- && !(regval & OA_STATUS0_RESETC_MASK));
+
+  if (!(regval & OA_STATUS0_RESETC_MASK))
     {
       return ERROR;
     }
