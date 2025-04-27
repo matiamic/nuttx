@@ -181,6 +181,10 @@ static int ncv_write_reg(FAR struct ncv7410_driver_s *priv,
 static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
                         oa_regid_t regid, FAR uint32_t *word);
 
+static int ncv_set_clear_bits(FAR struct ncv7410_driver_s *priv,
+                        oa_regid_t regid,
+                        uint32_t setbits, uint32_t clearbits);
+
 static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
                            FAR uint32_t *footer);
 
@@ -777,6 +781,47 @@ static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
 }
 
 /****************************************************************************
+ * Name: ncv_set_clear_bits
+ *
+ * Description:
+ *   Perform read-modify-write operation on a given register
+ *   while setting bits from the setbits argument and clearing bits from
+ *   the clearbits argument
+ *
+ * Input Parameters:
+ *   priv      - pointer to the driver specific data structure
+ *   regid     - Register id of a word to be modified
+ *   setbits   - bits set to one will be set in the register
+ *   clearbits - bits set to one will be cleared in the register
+ *
+ * Returned Value:
+ *   on successful transaction OK is returned, otherwise ERROR is returned
+ *
+ ****************************************************************************/
+
+static int ncv_set_clear_bits(FAR struct ncv7410_driver_s *priv,
+                              oa_regid_t regid,
+                              uint32_t setbits, uint32_t clearbits)
+{
+  uint32_t regval;
+
+  if (ncv_read_reg(priv, regid, &regval))
+    {
+      return ERROR;
+    }
+
+  regval |= setbits;
+  regval &= ~clearbits;
+
+  if (ncv_write_reg(priv, regid, regval))
+    {
+      return ERROR;
+    }
+
+  return OK;
+}
+
+/****************************************************************************
  * Name: ncv_poll_footer
  *
  * Description:
@@ -1062,34 +1107,24 @@ static int ncv_enable(FAR struct ncv7410_driver_s *priv)
 {
   /* enable PHY */
 
-  uint32_t regval;
+  uint32_t setbits;
 
   ninfo("Enabling ncv7410\n");
 
   /* enable RX and TX in PHY */
 
-  if (ncv_read_reg(priv, OA_PHY_CONTROL_REGID, &regval))
-    {
-      return ERROR;
-    }
+  setbits = (1 << OA_PHY_CONTROL_LCTL_POS);
 
-  regval |= (1 << OA_PHY_CONTROL_LCTL_POS);
-
-  if (ncv_write_reg(priv, OA_PHY_CONTROL_REGID, regval))
+  if (ncv_set_clear_bits(priv, OA_PHY_CONTROL_REGID, setbits, 0))
     {
       return ERROR;
     }
 
   /* enable PHY interrupt */
 
-  if (ncv_read_reg(priv, OA_IMSK0_REGID, &regval))
-    {
-      return ERROR;
-    }
+  setbits = (1 << OA_IMSK0_PHYINTM_POS);
 
-  regval |= (1 << OA_IMSK0_PHYINTM_POS);
-
-  if (ncv_write_reg(priv, OA_IMSK0_REGID, regval))
+  if (ncv_set_clear_bits(priv, OA_IMSK0_REGID, setbits, 0))
     {
       return ERROR;
     }
@@ -1115,34 +1150,24 @@ static int ncv_disable(FAR struct ncv7410_driver_s *priv)
 {
   /* disable PHY */
 
-  uint32_t regval;
+  uint32_t clearbits;
 
   ninfo("Disabling ncv7410\n");
 
   /* disable PHY interrupt */
 
-  if (ncv_read_reg(priv, OA_IMSK0_REGID, &regval))
-    {
-      return ERROR;
-    }
+  clearbits = (1 << OA_IMSK0_PHYINTM_POS);
 
-  regval &= ~(1 << OA_IMSK0_PHYINTM_POS);
-
-  if (ncv_write_reg(priv, OA_IMSK0_REGID, regval))
+  if (ncv_set_clear_bits(priv, OA_IMSK0_REGID, 0, clearbits))
     {
       return ERROR;
     }
 
   /* disable RX and TX in PHY */
 
-  if (ncv_read_reg(priv, OA_PHY_CONTROL_REGID, &regval))
-    {
-      return ERROR;
-    }
+  clearbits = (1 << OA_PHY_CONTROL_LCTL_POS);
 
-  regval &= ~(1 << OA_PHY_CONTROL_LCTL_POS);
-
-  if (ncv_write_reg(priv, OA_PHY_CONTROL_REGID, regval))
+  if (ncv_set_clear_bits(priv, OA_PHY_CONTROL_REGID, 0, clearbits))
     {
       return ERROR;
     }
