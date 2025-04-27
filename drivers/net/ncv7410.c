@@ -1048,6 +1048,9 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
  * Returned Value:
  *   on success OK is returned, otherwise ERROR is returned
  *
+ * Assumptions:
+ *   the function is called after MAC address is initialized
+ *
  ****************************************************************************/
 
 static int ncv_config(FAR struct ncv7410_driver_s *priv)
@@ -1070,29 +1073,63 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
       return ERROR;
     }
 
-  /* enable MAC TX, RX, enable transmit FCS computation on MAC */
+  /* enable MAC TX, RX, enable transmit FCS computation on MAC,
+   * enable MAC address filtering
+   */
 
   regval =   (1 << NCV_MAC_CONTROL0_FCSA_POS)
            | (1 << NCV_MAC_CONTROL0_TXEN_POS)
-           | (1 << NCV_MAC_CONTROL0_RXEN_POS);
+           | (1 << NCV_MAC_CONTROL0_RXEN_POS)
+           | (1 << NCV_MAC_CONTROL0_ADRF_POS);
+
+#ifdef CONFIG_NET_PROMISCUOUS
+  /* disable MAC address filtering */
+
+  regval &= ~(1 << NCV_MAC_CONTROL0_ADRF_POS);
+#endif
 
   if (ncv_write_reg(priv, NCV_MAC_CONTROL0_REGID, regval))
     {
       return ERROR;
     }
 
-  /* setup SPI protocol and set SYNC flag */
+#ifndef CONFIG_NET_PROMISCUOUS
+  /* setup MAC address filter */
 
-  regval =   (1 << OA_CONFIG0_SYNC_POS)
-           | (1 << OA_CONFIG0_CSARFE_POS)
-           | (1 << OA_CONFIG0_ZARFE_POS)
-           | (3 << OA_CONFIG0_TXCTHRESH_POS)
-           | (6 << OA_CONFIG0_CPS_POS);
+  regval =   (priv->dev.netdev.d_mac.ether.ether_addr_octet[2] << 24)
+           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[3] << 16)
+           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[4] << 8)
+           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[5]);
 
-  if (ncv_write_reg(priv, OA_CONFIG0_REGID, regval))
+  if (ncv_write_reg(priv, NCV_ADDRFILT0L_REGID, regval))
     {
       return ERROR;
     }
+
+  regval =   (1 << 31)  /* enable filter */
+           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[0] << 8)
+           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[1]);
+
+  if (ncv_write_reg(priv, NCV_ADDRFILT0H_REGID, regval))
+    {
+      return ERROR;
+    }
+
+  regval = 0xffffffff;
+
+  if (ncv_write_reg(priv, NCV_ADDRMASK0L_REGID, regval))
+    {
+      return ERROR;
+    }
+
+  regval = 0x0000ffff;
+
+  if (ncv_write_reg(priv, NCV_ADDRMASK0H_REGID, regval))
+    {
+      return ERROR;
+    }
+
+#endif
 
   /* enable rx buffer overflow interrupt */
 
@@ -1102,6 +1139,22 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
     {
       return ERROR;
     }
+
+  /* setup SPI protocol and set SYNC flag */
+
+  regval =   (1 << OA_CONFIG0_SYNC_POS)
+           | (1 << OA_CONFIG0_CSARFE_POS)
+           | (1 << OA_CONFIG0_ZARFE_POS)
+           /* | (1 << OA_CONFIG0_TXCTE_POS) */
+           /* | (1 << OA_CONFIG0_RXCTE_POS) */
+           | (3 << OA_CONFIG0_TXCTHRESH_POS)
+           | (6 << OA_CONFIG0_CPS_POS);
+
+  if (ncv_write_reg(priv, OA_CONFIG0_REGID, regval))
+    {
+      return ERROR;
+    }
+
 
   return OK;
 }
