@@ -152,7 +152,7 @@ struct ncv7410_driver_s
   /* MAC-PHY internal buffer status */
 
   int txc;
-  int rxa;
+  int rca;
 
   /* Packet buffer management */
 
@@ -248,7 +248,6 @@ static inline int ncv_return_ok(void)
   return OK;
 }
 
-
 /* Initialization */
 
 int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq);
@@ -342,9 +341,9 @@ static void ncv_interrupt_work(FAR void *arg)
   /* update MAC-PHY buffer status */
 
   priv->txc = oa_tx_credits(footer);
-  priv->rxa = oa_rx_available(footer);
+  priv->rca = oa_rx_available(footer);
 
-  if ((priv->tx_pkt && priv->txc) || priv->rxa)
+  if ((priv->tx_pkt && priv->txc) || priv->rca)
     {
       /* schedule IO work */
 
@@ -463,7 +462,7 @@ static void ncv_io_work(FAR void *arg)
   /* update buffer status */
 
   priv->txc = oa_tx_credits(footer);
-  priv->rxa = oa_rx_available(footer);
+  priv->rca = oa_rx_available(footer);
 
   if (oa_frame_drop(footer))
     {
@@ -511,7 +510,7 @@ static void ncv_io_work(FAR void *arg)
 
   /* plan further work if needed */
 
-  if ((priv->tx_pkt && priv->txc) || priv->rxa)
+  if ((priv->tx_pkt && priv->txc) || priv->rca)
     {
       work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
     }
@@ -1316,7 +1315,7 @@ static int ncv_init_mac_addr(FAR struct ncv7410_driver_s *priv)
 static void ncv_reset_driver_buffers(FAR struct ncv7410_driver_s *priv)
 {
   priv->txc = 0;
-  priv->rxa = 0;
+  priv->rca = 0;
 
   if (priv->tx_pkt)
     {
@@ -1424,7 +1423,7 @@ static int ncv7410_ifup(FAR struct netdev_lowerhalf_s *dev)
       return -EIO;
     }
 
-  /* schedule interrupt work to initialize txc and rxa */
+  /* schedule interrupt work to initialize txc and rca */
 
   work_queue(NCVWORK, &priv->interrupt_work, ncv_interrupt_work, priv, 0);
 
