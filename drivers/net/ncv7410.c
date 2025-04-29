@@ -107,19 +107,6 @@ enum ncv_ifstate_e
   NCV_INIT_UP
 };
 
-/* use this instead of read-modify-write when changing setup
- * e.g. when changing state up/down, can also server as a backup for
- * configuration, when MAC-PHY is reset unexpectedly, now not used
- */
-
-struct ncv7410_registers_s
-{
-  uint32_t oa_config0;
-  uint32_t dio_config;
-  uint32_t mac_control0;
-  uint32_t phy_control;
-};
-
 struct ncv7410_driver_s
 {
   /* This holds the information visible to the NuttX network
@@ -237,12 +224,6 @@ static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev);
 static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
                             FAR netpkt_t *pkt);
 static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev);
-#ifdef CONFIG_NET_MCASTGROUP
-static int ncv7410_addmac(FAR struct netdev_lowerhalf_s *dev,
-                          FAR const uint8_t *mac);
-static int ncv7410_rmmac(FAR struct netdev_lowerhalf_s *dev,
-                         FAR const uint8_t *mac);
-#endif
 
 /* Debug */
 
@@ -267,8 +248,8 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq);
  * Name: ncv_interrupt
  *
  * Description:
- *   Schedule interrupt work when the interrupt signal from ncv7410 is
- *   received
+ *   Schedule interrupt work when the interrupt signal from MAC-PHY is
+ *   received.
  *
  * Input Parameters:
  *   irq     - not used
@@ -277,9 +258,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq);
  *             worker
  *
  * Returned Value:
- *   zero
- *
- * Assumptions:
+ *   OK is always returned.
  *
  ****************************************************************************/
 
@@ -287,29 +266,25 @@ static int ncv_interrupt(int irq, FAR void *context, FAR void *arg)
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) arg;
 
-  DEBUGASSERT(priv != NULL);
-
   ninfo("ncv7410 interrupt!\n");
 
   /* schedule interrupt work */
 
   work_queue(NCVWORK, &priv->interrupt_work, ncv_interrupt_work, priv, 0);
-  return 0;
+  return OK;
 }
 
 /****************************************************************************
  * Name: ncv_interrupt_work
  *
  * Description:
- *   checks the origin of the interrupt and carry out necessary work
+ *   Identify the interrupt source and perform necessary work.
  *
  * Input Parameters:
  *   arg - pointer to driver private data
  *
  * Returned Value:
- *   none
- *
- * Assumptions:
+ *   None
  *
  ****************************************************************************/
 
@@ -340,8 +315,7 @@ static void ncv_interrupt_work(FAR void *arg)
 
   ncv_print_footer(footer);
 
-  /* find out the origin of the interrupt
-   * if EXST in the footer, check enabled sources
+  /* if EXST in the footer, check enabled sources
    * STATUS0, link-status in clause 22 phy registers
    */
 
@@ -370,7 +344,7 @@ static void ncv_interrupt_work(FAR void *arg)
  *   arg - pointer to driver private data
  *
  * Returned Value:
- *   none
+ *   None
  *
  ****************************************************************************/
 
@@ -378,8 +352,8 @@ static void ncv_io_work(FAR void *arg)
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) arg;
 
-  uint8_t txbuf[NCV_CHUNK_DEFAULT_SIZE];
-  uint8_t rxbuf[NCV_CHUNK_DEFAULT_SIZE];
+  uint8_t txbuf[NCV_CHUNK_DEFAULT_PAYLOAD_SIZE];
+  uint8_t rxbuf[NCV_CHUNK_DEFAULT_PAYLOAD_SIZE];
 
   uint32_t header;
   uint32_t footer;
@@ -393,7 +367,7 @@ static void ncv_io_work(FAR void *arg)
 
   header = ncv_prepare_chunk_exchange(priv, txbuf);
 
-  /* do the SPI exchange */
+  /* perform the SPI exchange */
 
   if (ncv_exchange_chunk(priv, txbuf, rxbuf, header, &footer))
     {
@@ -405,15 +379,11 @@ static void ncv_io_work(FAR void *arg)
       PANIC();
     }
 
-  /* if finished tx packet, do the housekeeping */
-
   ncv_try_finish_tx_packet(priv);
-
-  /* handle the received chunk */
 
   ncv_handle_rx_chunk(priv, footer, rxbuf);
 
-  /* plan further work if needed */
+  /* schedule further work if needed */
 
   if ((priv->tx_pkt && priv->txc) || priv->rca)
     {
@@ -427,16 +397,15 @@ static void ncv_io_work(FAR void *arg)
  * Name: ncv_prepare_chunk_exchange
  *
  * Description:
- *   Check if there is data waiting to be sent and if data can be received.
- *   Set header accordingly and return it. Fill txbuf.
+ *   Determine whether there is data to transmit or receive.
+ *   Set the appropriate header bitfields and fill the txbuf accordingly.
  *
  * Input Parameters:
- *   priv  - pointer to the driver specific data structure
- *   txbuf - pointer to the chunk buffer for SPI transfer
+ *   priv  - pointer to the driver-specific state structure
+ *   txbuf - pointer to the transmit chunk buffer
  *
  * Returned Value:
- *   Header with bitfields set accorging to driver and MAC-PHY buffers
- *   is returned.
+ *   Returns the prepared chunk header
  *
  ****************************************************************************/
 
@@ -487,14 +456,14 @@ static uint32_t ncv_prepare_chunk_exchange(FAR struct ncv7410_driver_s *priv,
  * Name: ncv_can_rx
  *
  * Description:
- *   Check if there is available rx data and if it possible to receive them.
+ *   Determine whether rx data is available and whether it can be received.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
  *   If it is possible to receive an rx chunk, true is returned,
- *   otherwise false is returned
+ *   otherwise false is returned.
  *
  ****************************************************************************/
 
@@ -529,14 +498,14 @@ static bool ncv_can_rx(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_try_finish_tx_packet
  *
  * Description:
- *   Check if the entire packet was transmitted.
- *   If yes, free the netpkt and inform the upperhalf.
+ *   Check whether the entire packet has been transmitted.
+ *   If so, free the tx netpkt and notify the upperhalf.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   none
+ *   None
  *
  ****************************************************************************/
 
@@ -554,16 +523,16 @@ static void ncv_try_finish_tx_packet(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_handle_rx_chunk
  *
  * Description:
- *   Read the received footer, update buffer status and copy data from
- *   rxbuf to netpkt accordingly
+ *   Parse the received footer, update buffer status and handle data
+ *   in the rxbuf.
  *
  * Input Parameters:
- *   priv   - pointer to the driver specific data structure
+ *   priv   - pointer to the driver-specific state structure
  *   footer - the received footer
- *   rxbuf  - pointer to the buffer with received data
+ *   rxbuf  - pointer to the received data buffer
  *
  * Returned Value:
- *   none
+ *   None
  *
  ****************************************************************************/
 
@@ -625,10 +594,10 @@ static void ncv_handle_rx_chunk(FAR struct ncv7410_driver_s *priv,
  *   Strip down last 4 bytes (FCS) from the rx packet and mark it ready.
  *
  * Input Parameters:
- *   priv   - pointer to the driver specific data structure
+ *   priv   - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   none
+ *   None
  *
  ****************************************************************************/
 
@@ -643,7 +612,7 @@ static void ncv_finalize_rx_packet(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_get_parity
  *
  * Description:
- *   Obtain parity of 32-bit word.
+ *   Obtain parity of a 32-bit word.
  *
  * Input Parameters:
  *   w - 32-bit word, subject to the parity calculation
@@ -668,13 +637,13 @@ static int ncv_get_parity(uint32_t w)
  * Name: ncv_bitrev8
  *
  * Description:
- *   perform a bit reverse of a byte
+ *   Perform a bit reverse of a byte.
  *
  * Input Parameters:
  *   b - byte to be reversed
  *
  * Returned Value:
- *   Byte with reversed bits is returned
+ *   Byte with reversed bits is returned.
  *
  ****************************************************************************/
 
@@ -689,12 +658,13 @@ uint8_t ncv_bitrev8(uint8_t b)
 }
 
 /****************************************************************************
- * Name: ncv_lock_spi
+ * Name: ncv_(lock/unlock/config/select/deselect)_spi
  *
  * Description:
+ *   Helper functions to setup SPI hardware.
  *
  * Input Parameters:
- *   priv -
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
  *   None
@@ -706,36 +676,10 @@ static inline void ncv_lock_spi(FAR struct ncv7410_driver_s *priv)
   SPI_LOCK(priv->spi, true);
 }
 
-/****************************************************************************
- * Name: ncv_unlock_spi
- *
- * Description:
- *
- * Input Parameters:
- *   priv -
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
 static inline void ncv_unlock_spi(FAR struct ncv7410_driver_s *priv)
 {
   SPI_LOCK(priv->spi, false);
 }
-
-/****************************************************************************
- * Name: ncv_config_spi
- *
- * Description:
- *
- * Input Parameters:
- *   priv -
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
 
 static inline void ncv_config_spi(FAR struct ncv7410_driver_s *priv)
 {
@@ -745,38 +689,10 @@ static inline void ncv_config_spi(FAR struct ncv7410_driver_s *priv)
   SPI_SETFREQUENCY(priv->spi, CONFIG_NCV7410_FREQUENCY);
 }
 
-/****************************************************************************
- * Name: ncv_select_spi
- *
- * Description:
- *   Assert device's CS pin
- *
- * Input Parameters:
- *   priv -
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
-
 static inline void ncv_select_spi(FAR struct ncv7410_driver_s *priv)
 {
   SPI_SELECT(priv->spi, SPIDEV_ETHERNET(0), true);
 }
-
-/****************************************************************************
- * Name: ncv_deselect_spi
- *
- * Description:
- *   Releases device's CS pin
- *
- * Input Parameters:
- *   priv -
- *
- * Returned Value:
- *   None
- *
- ****************************************************************************/
 
 static inline void ncv_deselect_spi(FAR struct ncv7410_driver_s *priv)
 {
@@ -787,15 +703,15 @@ static inline void ncv_deselect_spi(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_write_reg
  *
  * Description:
- *   Write a word to ncv7410's registers.
+ *   Write to a MAC-PHY register.
  *
  * Input Parameters:
- *   priv  - pointer to the driver specific data structure
+ *   priv  - pointer to the driver-specific state structure
  *   regid - Register id encapsulating MMS and ADDR
  *   word  - 32-bit word to be written to the register
  *
  * Returned Value:
- *   on successful transaction 0 is returned, otherwise 1 is returned
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
@@ -845,12 +761,12 @@ static int ncv_write_reg(FAR struct ncv7410_driver_s *priv,
  * Name: ncv_read_reg
  *
  * Description:
- *   Read a word from ncv7410's registers.
+ *   Read a MAC-PHY register.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
- *   regid - Register id encapsulating MMS and ADDR
- *   word - pointer to 32-bit variable into which the register will be stored
+ *   priv  - pointer to the driver-specific state structure
+ *   regid - register id encapsulating MMS and ADDR
+ *   word  - pointer to a 32-bit destination variable
  *
  * Returned Value:
  *   on successful transaction OK is returned, otherwise ERROR is returned
@@ -904,18 +820,18 @@ static int ncv_read_reg(FAR struct ncv7410_driver_s *priv,
  * Name: ncv_set_clear_bits
  *
  * Description:
- *   Perform read-modify-write operation on a given register
+ *   Perform a read-modify-write operation on a given register
  *   while setting bits from the setbits argument and clearing bits from
  *   the clearbits argument
  *
  * Input Parameters:
- *   priv      - pointer to the driver specific data structure
- *   regid     - Register id of a word to be modified
+ *   priv      - pointer to the driver-specific state structure
+ *   regid     - register id of the register to be modified
  *   setbits   - bits set to one will be set in the register
  *   clearbits - bits set to one will be cleared in the register
  *
  * Returned Value:
- *   on successful transaction OK is returned, otherwise ERROR is returned
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
@@ -942,63 +858,6 @@ static int ncv_set_clear_bits(FAR struct ncv7410_driver_s *priv,
 }
 
 /****************************************************************************
- * Name: ncv_poll_footer
- *
- * Description:
- *   poll a data transaction chunk footer while not reading nor writing
- *   frame data
- *
- * Input Parameters:
- *   priv   - pointer to the driver specific data structure
- *   footer - pointer to a 32-bit variable for the footer
- *
- * Returned Value:
- *   on successful transaction OK is returned, otherwise ERROR is returned
- *
- ****************************************************************************/
-
-static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
-                           FAR uint32_t *footer)
-{
-  uint32_t txdata[NCV_CHUNK_DEFAULT_SIZE / 4];
-  uint32_t rxdata[NCV_CHUNK_DEFAULT_SIZE / 4];
-  uint32_t header;
-  *footer = 0;
-
-  header =   (1 << OA_DNC_POS)   /* Data Not Control */
-           | (1 << OA_NORX_POS); /* No Read */
-
-  header |= (!ncv_get_parity(header) << OA_P_POS);
-  header = htobe32(header);
-  txdata[0] = header;
-
-  ncv_lock_spi(priv);
-  ncv_config_spi(priv);
-  ncv_select_spi(priv);
-  SPI_EXCHANGE(priv->spi, txdata, rxdata, NCV_CHUNK_DEFAULT_SIZE);
-  ncv_deselect_spi(priv);
-  ncv_unlock_spi(priv);
-
-  *footer = rxdata[NCV_CHUNK_DEFAULT_PAYLOAD_SIZE / 4];
-  *footer = be32toh(*footer);
-  if (!ncv_get_parity(*footer))
-    {
-      nerr("Wrong parity in the footer\n");
-      *footer = 0;
-      return ERROR;
-    }
-
-  if (oa_header_bad(*footer))
-    {
-      nerr("HDRB set in the footer\n");
-      *footer = 0;
-      return ERROR;
-    }
-
-  return OK;
-}
-
-/****************************************************************************
  * Name: ncv_exchange_chunk
  *
  * Description:
@@ -1008,14 +867,14 @@ static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
  *   endianity and setting DNC flag is done by this function
  *
  * Input Parameters:
- *   priv   - pointer to the driver specific data structure
+ *   priv   - pointer to the driver-specific state structure
  *   txbuf  - buffer with transmit chunk data
  *   rxbuf  - buffer to save the received chunk to
  *   header - header controlling the transaction
  *   footer - pointer to a 32-bit value for the footer
  *
  * Returned Value:
- *   on successful transaction OK is returned, otherwise ERROR is returned
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
@@ -1055,16 +914,49 @@ static int ncv_exchange_chunk(FAR struct ncv7410_driver_s *priv,
 }
 
 /****************************************************************************
+ * Name: ncv_poll_footer
+ *
+ * Description:
+ *   Poll a data transaction chunk footer.
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver-specific state structure
+ *   footer - pointer to a 32-bit footer destination variable
+ *
+ * Returned Value:
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
+static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
+                           FAR uint32_t *footer)
+{
+  uint8_t txdata[NCV_CHUNK_DEFAULT_PAYLOAD_SIZE];
+  uint8_t rxdata[NCV_CHUNK_DEFAULT_PAYLOAD_SIZE];
+  uint32_t header;
+
+  header =   (1 << OA_DNC_POS)   /* Data Not Control */
+           | (1 << OA_NORX_POS); /* No Read */
+
+  if (ncv_exchange_chunk(priv, txdata, rxdata, header, footer))
+    {
+      return ERROR;
+    }
+
+  return OK;
+}
+
+/****************************************************************************
  * Name: ncv_reset
  *
  * Description:
- *   Perform SW reset of the ncv7410 MAC-PHY
+ *   Perform SW reset of the MAC-PHY.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   on successful reset OK is returned, otherwise ERROR is returned
+ *   On a successful reset OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
@@ -1078,7 +970,7 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
       return ERROR;
     }
 
-  /* check that the RESET bit cleared itself */
+  /* check whether the RESET bit cleared itself */
 
   do
     {
@@ -1094,7 +986,7 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
       return ERROR;
     }
 
-  /* check thta the reset complete flag is set */
+  /* check whether the reset complete flag is set */
 
   tries = NCV_RESET_TRIES;
 
@@ -1161,22 +1053,25 @@ static int ncv_reset(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_config
  *
  * Description:
- *   configure ncv7410 into promiscuous mode and set SYNC flag
+ *   Configure the MAC-PHY into promiscuous mode and set the SYNC flag.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   on success OK is returned, otherwise ERROR is returned
+ *   On success OK is returned, otherwise ERROR is returned.
  *
  * Assumptions:
- *   the function is called after MAC address is initialized
+ *   The function is called after the MAC address is initialized.
  *
  ****************************************************************************/
 
 static int ncv_config(FAR struct ncv7410_driver_s *priv)
 {
   uint32_t regval;
+#ifndef CONFIG_NET_PROMISCUOUS
+  uint8_t *mac = priv->dev.netdev.d_mac.ether.ether_addr_octet;
+#endif
 
   ninfo("Configuring ncv7410\n");
 
@@ -1217,10 +1112,10 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
 #ifndef CONFIG_NET_PROMISCUOUS
   /* setup MAC address filter */
 
-  regval =   (priv->dev.netdev.d_mac.ether.ether_addr_octet[2] << 24)
-           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[3] << 16)
-           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[4] << 8)
-           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[5]);
+  regval =   (mac[2] << 24)
+           | (mac[3] << 16)
+           | (mac[4] << 8)
+           | (mac[5]);
 
   if (ncv_write_reg(priv, NCV_ADDRFILT0L_REGID, regval))
     {
@@ -1228,8 +1123,8 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
     }
 
   regval =   (1 << 31)  /* enable filter */
-           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[0] << 8)
-           | (priv->dev.netdev.d_mac.ether.ether_addr_octet[1]);
+           | (mac[0] << 8)
+           | (mac[1]);
 
   if (ncv_write_reg(priv, NCV_ADDRFILT0H_REGID, regval))
     {
@@ -1283,16 +1178,13 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_enable
  *
  * Description:
- *   enable TX and RX on the MAC-PHY
+ *   Enable TX and RX on the MAC-PHY.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   on success OK is returned, otherwise ERROR is returned
- *
- * Assumptions:
- *   ncv7410 is already configured using ncv_config()
+ *   On success OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
@@ -1329,13 +1221,13 @@ static int ncv_enable(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_disable
  *
  * Description:
- *   disable TX and RX on the MAC-PHY
+ *   Disable TX and RX on the MAC-PHY.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   on success OK is returned, otherwise ERROR is returned
+ *   On success OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
@@ -1372,13 +1264,14 @@ static int ncv_disable(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_init_mac_addr
  *
  * Description:
- *   read the hardware MAC address and copy it into network device struct
+ *   Read the MAC-PHY's factory-assigned MAC address and copy it into
+ *   the network device state structure.
  *
  * Input Parameters:
- *   priv - pointer to the driver specific data structure
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   on success OK is returned, otherwise ERROR is returned
+ *   On success OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
@@ -1420,16 +1313,14 @@ static int ncv_init_mac_addr(FAR struct ncv7410_driver_s *priv)
  * Name: ncv_reset_driver_buffers
  *
  * Description:
- *   set driver's buffers to the initial setup
+ *   If allocated, release both tx and rx netpackets and reset buffer status
+ *   to the default.
  *
  * Input Parameters:
- *   none
+ *   priv - pointer to the driver-specific state structure
  *
  * Returned Value:
- *   priv - pointer to the driver specific data structure
- *
- * Assumptions:
- *   called with locked mutex
+ *   None
  *
  ****************************************************************************/
 
@@ -1463,10 +1354,10 @@ static void ncv_reset_driver_buffers(FAR struct ncv7410_driver_s *priv)
  *   print individual bitfield of a receive chunk footer
  *
  * Input Parameters:
- *   none
+ *   None
  *
  * Returned Value:
- *   none
+ *   None
  *
  ****************************************************************************/
 
@@ -1496,15 +1387,13 @@ static void ncv_print_footer(uint32_t footer)
  * Name: ncv7410_ifup
  *
  * Description:
- *   NuttX callback: Bring up the Ethernet interface when an IP address is
- *   provided
+ *   NuttX callback: Bring up the Ethernet interface
  *
  * Input Parameters:
- *   dev - Reference to the NuttX driver state structure
+ *   dev - reference to the NuttX driver state structure
  *
  * Returned Values:
- *   OK (0) is returned on success
- *   negated errno is returned otherwise
+ *   On success OK is returned, oterwise negated errno is returned.
  *
  ****************************************************************************/
 
@@ -1551,6 +1440,20 @@ static int ncv7410_ifup(FAR struct netdev_lowerhalf_s *dev)
   return OK;
 }
 
+/****************************************************************************
+ * Name: ncv7410_ifdown
+ *
+ * Description:
+ *   NuttX callback: Shut down the Ethernet interface.
+ *
+ * Input Parameters:
+ *   dev - reference to the NuttX driver state structure
+ *
+ * Returned Values:
+ *   On success OK is returned, oterwise negated errno is returned.
+ *
+ ****************************************************************************/
+
 static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev)
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) dev;
@@ -1583,6 +1486,21 @@ static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev)
   return OK;
 }
 
+/****************************************************************************
+ * Name: ncv7410_transmit
+ *
+ * Description:
+ *   NuttX callback: Transmit the given packet.
+ *
+ * Input Parameters:
+ *   dev - reference to the NuttX driver state structure
+ *   pkt - network packet to be transmitted
+ *
+ * Returned Values:
+ *   On success OK is returned, oterwise negated errno is returned.
+ *
+ ****************************************************************************/
+
 static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
                             FAR netpkt_t *pkt)
 {
@@ -1610,6 +1528,21 @@ static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
   return OK;
 }
 
+/****************************************************************************
+ * Name: ncv7410_receive
+ *
+ * Description:
+ *   NuttX callback: Claims an rx packet if available.
+ *
+ * Input Parameters:
+ *   dev - reference to the NuttX driver state structure
+ *
+ * Returned Values:
+ *   If the rx packet is ready, its pointer is returned.
+ *   NULL is returned otherwise.
+ *
+ ****************************************************************************/
+
 static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev)
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) dev;
@@ -1632,20 +1565,6 @@ static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev)
   return NULL;
 }
 
-#ifdef CONFIG_NET_MCASTGROUP
-static int ncv7410_addmac(FAR struct netdev_lowerhalf_s *dev,
-                          FAR const uint8_t *mac)
-{
-  return 0;
-}
-
-static int ncv7410_rmmac(FAR struct netdev_lowerhalf_s *dev,
-                         FAR const uint8_t *mac)
-{
-  return 0;
-}
-#endif
-
 /****************************************************************************
  * Private Data
  ****************************************************************************/
@@ -1656,10 +1575,7 @@ static const struct netdev_ops_s g_ncv7410_ops =
   .ifdown   = ncv7410_ifdown,
   .transmit = ncv7410_transmit,
   .receive  = ncv7410_receive,
-#ifdef CONFIG_NET_MCASTGROUP
-  .addmac   = ncv7410_addmac,
-  .rmmac    = ncv7410_rmmac,
-#endif
+  /* TODO: consult addmac and rmmac */
   /* TODO: add ioctl */
 };
 
@@ -1671,17 +1587,14 @@ static const struct netdev_ops_s g_ncv7410_ops =
  * Name: ncv7410_initialize
  *
  * Description:
- *   Initialize the Ethernet driver. The NCV7410 device is assumed to be
- *   in the post-reset state upon entry to this function.
+ *   Initialize the Ethernet driver.
  *
  * Input Parameters:
- *   spi - A reference to the platform's SPI driver for the NCV7410
- *   irq - irq number of the pin connected to NCV7410's interrupt signal
+ *   spi - reference to the SPI driver state data
+ *   irq - irq number of the pin connected to MAC-PHY's interrupt signal
  *
  * Returned Value:
- *   OK on success; Negated errno on failure.
- *
- * Assumptions:
+ *   On success OK is returned, oterwise negated errno is returned.
  *
  ****************************************************************************/
 
