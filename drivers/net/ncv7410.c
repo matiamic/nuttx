@@ -200,6 +200,13 @@ static void ncv_interrupt_work(FAR void *arg);
 /* Data Transaction Protocol logic */
 
 static void ncv_io_work(FAR void *arg);
+static uint32_t ncv_prepare_chunk_exchange(FAR struct ncv7410_driver_s *priv,
+                                           FAR uint8_t *txbuf);
+static bool ncv_can_rx(FAR struct ncv7410_driver_s *priv);
+static void ncv_try_finish_tx_packet(FAR struct ncv7410_driver_s *priv);
+static void ncv_handle_rx_chunk(FAR struct ncv7410_driver_s *priv,
+                                uint32_t footer, FAR uint8_t *rxbuf);
+static void ncv_finalize_rx_packet(FAR struct ncv7410_driver_s *priv);
 
 /* SPI inline utility functions */
 
@@ -357,15 +364,13 @@ static void ncv_interrupt_work(FAR void *arg)
  * Name: ncv_io_work
  *
  * Description:
- *   exchanges data chunks with the MAC-PHY
+ *   Exchange data chunk with the MAC-PHY.
  *
  * Input Parameters:
  *   arg - pointer to driver private data
  *
  * Returned Value:
  *   none
- *
- * Assumptions:
  *
  ****************************************************************************/
 
@@ -376,11 +381,8 @@ static void ncv_io_work(FAR void *arg)
   uint8_t txbuf[NCV_CHUNK_DEFAULT_SIZE];
   uint8_t rxbuf[NCV_CHUNK_DEFAULT_SIZE];
 
-  uint32_t header = (1 << OA_DNC_POS); /* Data Not Control */
+  uint32_t header;
   uint32_t footer;
-
-  int txlen; /* how many bytes will be sent in chunk */
-  int rxlen; /* how many bytes are received from the chunk */
 
   ncv_mutex_lock(&priv->mutex);
 
@@ -389,54 +391,7 @@ static void ncv_io_work(FAR void *arg)
       return;
     }
 
-  if (priv->txc && priv->tx_pkt != NULL)
-    {
-      header |= (1 << OA_DV_POS);  /* Data Valid */
-
-      if (priv->tx_pkt_idx == 0)
-        {
-          header |=   (1 << OA_SV_POS)   /* Start Valid */
-                    | (0 << OA_SWO_POS); /* start word at postion 0 in chunk */
-        }
-
-      txlen = priv->tx_pkt_len - priv->tx_pkt_idx;
-
-      if (txlen <= NCV_CHUNK_DEFAULT_PAYLOAD_SIZE)
-        {
-          header |=   (1 << OA_EV_POS)             /* End Valid */
-                    | ((txlen - 1) << OA_EBO_POS); /* End Byte Offset */
-        }
-      else
-        {
-          txlen = NCV_CHUNK_DEFAULT_PAYLOAD_SIZE;
-        }
-
-      netpkt_copyout(&priv->dev, txbuf, priv->tx_pkt,
-                     txlen, priv->tx_pkt_idx);
-      priv->tx_pkt_idx += txlen;
-    }
-
-  if (priv->rx_pkt == NULL)
-    {
-      priv->rx_pkt = netpkt_alloc(&priv->dev, NETPKT_RX);
-      if (priv->rx_pkt == NULL)
-        {
-          ninfo("info: Failed to alloc rx netpkt\n");
-
-          /* there is no buffer for potential rx data
-           * => rx receiving is disabled
-           */
-
-          header |= (1 << OA_NORX_POS);  /* no rx */
-        }
-    }
-
-  /* disable receiving if the rx packet is waiting to be claimed by network */
-
-  if (priv->rx_pkt_ready)
-    {
-      header |= (1 << OA_NORX_POS);  /* no rx */
-    }
+  header = ncv_prepare_chunk_exchange(priv, txbuf);
 
   /* do the SPI exchange */
 
@@ -452,29 +407,178 @@ static void ncv_io_work(FAR void *arg)
 
   /* if finished tx packet, do the housekeeping */
 
+  ncv_try_finish_tx_packet(priv);
+
+  /* handle the received chunk */
+
+  ncv_handle_rx_chunk(priv, footer, rxbuf);
+
+  /* plan further work if needed */
+
+  if ((priv->tx_pkt && priv->txc) || priv->rca)
+    {
+      work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
+    }
+
+  ncv_mutex_unlock(&priv->mutex);
+}
+
+/****************************************************************************
+ * Name: ncv_prepare_chunk_exchange
+ *
+ * Description:
+ *   Check if there is data waiting to be sent and if data can be received.
+ *   Set header accordingly and return it. Fill txbuf.
+ *
+ * Input Parameters:
+ *   priv  - pointer to the driver specific data structure
+ *   txbuf - pointer to the chunk buffer for SPI transfer
+ *
+ * Returned Value:
+ *   Header with bitfields set accorging to driver and MAC-PHY buffers
+ *   is returned.
+ *
+ ****************************************************************************/
+
+static uint32_t ncv_prepare_chunk_exchange(FAR struct ncv7410_driver_s *priv,
+                                           FAR uint8_t *txbuf)
+{
+  uint32_t header = 0;
+  int txlen;
+
+  if (priv->tx_pkt && priv->txc)
+    {
+      header |= (1 << OA_DV_POS);  /* Data Valid */
+
+      if (priv->tx_pkt_idx == 0)
+        {
+          header |=   (1 << OA_SV_POS)   /* Start Valid */
+                    | (0 << OA_SWO_POS); /* Start Word Offset = 0 */
+        }
+
+      txlen = priv->tx_pkt_len - priv->tx_pkt_idx;
+
+      if (txlen <= NCV_CHUNK_DEFAULT_PAYLOAD_SIZE)
+        {
+          header |=   (1 << OA_EV_POS)             /* End Valid */
+                    | ((txlen - 1) << OA_EBO_POS); /* End Byte Offset */
+        }
+      else
+        {
+          txlen = NCV_CHUNK_DEFAULT_PAYLOAD_SIZE;
+        }
+
+      /* copy data from network to txbuf */
+
+      netpkt_copyout(&priv->dev, txbuf, priv->tx_pkt,
+                     txlen, priv->tx_pkt_idx);
+      priv->tx_pkt_idx += txlen;
+    }
+
+  if (ncv_can_rx(priv) == false)
+    {
+      header |= (1 << OA_NORX_POS);  /* no rx */
+    }
+
+  return header;
+}
+
+/****************************************************************************
+ * Name: ncv_can_rx
+ *
+ * Description:
+ *   Check if there is available rx data and if it possible to receive them.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver specific data structure
+ *
+ * Returned Value:
+ *   If it is possible to receive an rx chunk, true is returned,
+ *   otherwise false is returned
+ *
+ ****************************************************************************/
+
+static bool ncv_can_rx(FAR struct ncv7410_driver_s *priv)
+{
+  if (priv->rca && !priv->rx_pkt_ready)
+    {
+      if (priv->rx_pkt == NULL)
+        {
+          priv->rx_pkt = netpkt_alloc(&priv->dev, NETPKT_RX);
+          if (priv->rx_pkt == NULL)
+            {
+              ninfo("info: Failed to alloc rx netpkt\n");
+
+              /* there is no buffer for rx data */
+
+              return false;
+            }
+        }
+
+      return true;
+    }
+
+  /* the rx packet is waiting to be claimed by network
+   * or there is nothing to be received
+   */
+
+  return false;
+}
+
+/****************************************************************************
+ * Name: ncv_try_finish_tx_packet
+ *
+ * Description:
+ *   Check if the entire packet was transmitted.
+ *   If yes, free the netpkt and inform the upperhalf.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver specific data structure
+ *
+ * Returned Value:
+ *   none
+ *
+ ****************************************************************************/
+
+static void ncv_try_finish_tx_packet(FAR struct ncv7410_driver_s *priv)
+{
   if (priv->tx_pkt && (priv->tx_pkt_idx == priv->tx_pkt_len))
     {
       netpkt_free(&priv->dev, priv->tx_pkt, NETPKT_TX);
       priv->tx_pkt = NULL;
       netdev_lower_txdone(&priv->dev);
     }
+}
+
+/****************************************************************************
+ * Name: ncv_handle_rx_chunk
+ *
+ * Description:
+ *   Read the received footer, update buffer status and copy data from
+ *   rxbuf to netpkt accordingly
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver specific data structure
+ *   footer - the received footer
+ *   rxbuf  - pointer to the buffer with received data
+ *
+ * Returned Value:
+ *   none
+ *
+ ****************************************************************************/
+
+static void ncv_handle_rx_chunk(FAR struct ncv7410_driver_s *priv,
+                                uint32_t footer, FAR uint8_t *rxbuf)
+{
+  int rxlen;
 
   /* update buffer status */
 
   priv->txc = oa_tx_credits(footer);
   priv->rca = oa_rx_available(footer);
 
-  if (oa_frame_drop(footer))
-    {
-      if (priv->rx_pkt)
-        {
-          netpkt_free(&priv->dev, priv->rx_pkt, NETPKT_RX);
-          priv->rx_pkt = NULL;
-        }
-    }
-
   /* check rx_pkt && !rx_pkt_ready,
-   * oa_data_valid flag migh be set due to an SPI error
+   * oa_data_valid flag might have been set due to an SPI error
    */
 
   if (oa_data_valid(footer) && priv->rx_pkt && !priv->rx_pkt_ready)
@@ -486,6 +590,13 @@ static void ncv_io_work(FAR void *arg)
 
       if (oa_end_valid(footer))
         {
+          if (oa_frame_drop(footer))
+            {
+              netpkt_free(&priv->dev, priv->rx_pkt, NETPKT_RX);
+              priv->rx_pkt = NULL;
+              return;
+            }
+
           rxlen = oa_end_byte_offset(footer) + 1;
         }
       else
@@ -499,23 +610,33 @@ static void ncv_io_work(FAR void *arg)
 
       if (oa_end_valid(footer))
         {
-          /* strip down last 4 bytes including FCS */
+          /* finalize packet and notify the upper */
 
-          netpkt_setdatalen(&priv->dev, priv->rx_pkt,
-                            netpkt_getdatalen(&priv->dev, priv->rx_pkt) - 4);
-          priv->rx_pkt_ready = true;
+          ncv_finalize_rx_packet(priv);
           netdev_lower_rxready(&priv->dev);
         }
     }
+}
 
-  /* plan further work if needed */
+/****************************************************************************
+ * Name: ncv_finalize_rx_packet
+ *
+ * Description:
+ *   Strip down last 4 bytes (FCS) from the rx packet and mark it ready.
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver specific data structure
+ *
+ * Returned Value:
+ *   none
+ *
+ ****************************************************************************/
 
-  if ((priv->tx_pkt && priv->txc) || priv->rca)
-    {
-      work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
-    }
-
-  ncv_mutex_unlock(&priv->mutex);
+static void ncv_finalize_rx_packet(FAR struct ncv7410_driver_s *priv)
+{
+  netpkt_setdatalen(&priv->dev, priv->rx_pkt,
+                    netpkt_getdatalen(&priv->dev, priv->rx_pkt) - 4);
+  priv->rx_pkt_ready = true;
 }
 
 /****************************************************************************
@@ -883,8 +1004,8 @@ static int ncv_poll_footer(FAR struct ncv7410_driver_s *priv,
  * Description:
  *   send a data chunk to MAC-PHY and simultaneously receive chunk,
  *
- *   computing header parity and checking footer parity as well as
- *   converting to proper endianity is done by this function
+ *   computing header parity, checking footer parity, converting to proper
+ *   endianity and setting DNC flag is done by this function
  *
  * Input Parameters:
  *   priv   - pointer to the driver specific data structure
@@ -902,6 +1023,7 @@ static int ncv_exchange_chunk(FAR struct ncv7410_driver_s *priv,
                               FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
                               uint32_t header, uint32_t *footer)
 {
+  header |= (1 << OA_DNC_POS);
   header |= (!ncv_get_parity(header) << OA_P_POS);
   header = htobe32(header);
 
@@ -1153,7 +1275,6 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
     {
       return ERROR;
     }
-
 
   return OK;
 }
@@ -1469,7 +1590,7 @@ static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
 
   ncv_mutex_lock(&priv->mutex);
 
-  if (priv->tx_pkt != NULL || priv->ifstate != NCV_INIT_UP)
+  if (priv->tx_pkt || priv->ifstate != NCV_INIT_UP)
     {
       /* previous tx packet was not yet sent to the network
        * or the interface was shut down while waiting for the mutex
@@ -1499,8 +1620,8 @@ static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev)
 
   if (priv->rx_pkt_ready)
     {
-      priv->rx_pkt_ready = false;
       retval = priv->rx_pkt;
+      priv->rx_pkt_ready = false;
       priv->rx_pkt = NULL;
       ncv_mutex_unlock(&priv->mutex);
       return retval;
