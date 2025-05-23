@@ -64,17 +64,6 @@
 #  error "CONFIG_SCHED_LPWORK not defined, NCV7410 driver depends on it"
 #endif
 
-#if defined(CONFIG_NETDEV_WORK_THREAD) || CONFIG_SCHED_LPNTHREADS > 1
-#  define NCV_MUTEX
-#  define ncv_mutex_lock(m)    nxmutex_lock(m)
-#  define ncv_mutex_trylock(m) nxmutex_trylock(m)
-#  define ncv_mutex_unlock(m)  nxmutex_unlock(m)
-#else
-#  define ncv_mutex_lock(m)    ncv_return_ok()
-#  define ncv_mutex_trylock(m) ncv_return_ok()
-#  define ncv_mutex_unlock(m)  ncv_return_ok()
-#endif
-
 #define NCV_RESET_TRIES 5
 
 /* Packet Memory ************************************************************/
@@ -82,7 +71,7 @@
 /* Maximum number of allocated tx and rx packets */
 
 #define NCV7410_TX_QUOTA        1
-#define NCV7410_RX_QUOTA        1
+#define NCV7410_RX_QUOTA        2
 
 #if CONFIG_IOB_NBUFFERS < (NCV7410_TX_QUOTA + NCV7410_RX_QUOTA)
 #  error "CONFIG_IOB_NBUFFERS must be > (NCV7410_TX_QUOTA + NCV7410_RX_QUOTA)"
@@ -117,9 +106,7 @@ struct ncv7410_driver_s
 
   /* This is the contained SPI driver instance */
 
-#ifdef NCV_MUTEX
   mutex_t mutex;
-#endif
 
   FAR struct spi_dev_s *spi;
 
@@ -229,13 +216,6 @@ static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev);
 
 static void ncv_print_footer(uint32_t footer);
 
-/* alternative for mutex operations, when mutex not needed */
-
-static inline int ncv_return_ok(void)
-{
-  return OK;
-}
-
 /* Initialization */
 
 int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq);
@@ -293,10 +273,11 @@ static void ncv_interrupt_work(FAR void *arg)
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) arg;
   uint32_t footer;
 
-  ncv_mutex_lock(&priv->mutex);
+  nxmutex_lock(&priv->mutex);
 
   if (priv->ifstate != NCV_INIT_UP)
     {
+      nxmutex_unlock(&priv->mutex);
       return;
     }
 
@@ -331,7 +312,7 @@ static void ncv_interrupt_work(FAR void *arg)
       work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
     }
 
-  ncv_mutex_unlock(&priv->mutex);
+  nxmutex_unlock(&priv->mutex);
 }
 
 /****************************************************************************
@@ -358,10 +339,11 @@ static void ncv_io_work(FAR void *arg)
   uint32_t header;
   uint32_t footer;
 
-  ncv_mutex_lock(&priv->mutex);
+  nxmutex_lock(&priv->mutex);
 
   if (priv->ifstate != NCV_INIT_UP)
     {
+      nxmutex_unlock(&priv->mutex);
       return;
     }
 
@@ -374,7 +356,8 @@ static void ncv_io_work(FAR void *arg)
       nerr("Error during chunk exchange\n");
 
       /* TODO: do not panic, the best is probably to report the error
-       * and reset MAC to some defined state and reset driver */
+       * and reset MAC to some defined state and reset driver
+       */
 
       PANIC();
     }
@@ -390,7 +373,7 @@ static void ncv_io_work(FAR void *arg)
       work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
     }
 
-  ncv_mutex_unlock(&priv->mutex);
+  nxmutex_unlock(&priv->mutex);
 }
 
 /****************************************************************************
@@ -469,28 +452,31 @@ static uint32_t ncv_prepare_chunk_exchange(FAR struct ncv7410_driver_s *priv,
 
 static bool ncv_can_rx(FAR struct ncv7410_driver_s *priv)
 {
-  if (priv->rca && !priv->rx_pkt_ready)
+  if (!priv->rca)
     {
-      if (priv->rx_pkt == NULL)
-        {
-          priv->rx_pkt = netpkt_alloc(&priv->dev, NETPKT_RX);
-          if (priv->rx_pkt == NULL)
-            {
-              ninfo("info: Failed to alloc rx netpkt\n");
+      return false;
+    }
 
-              /* there is no buffer for rx data */
+  if (priv->rx_pkt_ready)
+    {
+      return false;
+    }
 
-              return false;
-            }
-        }
-
+  if (priv->rx_pkt)
+    {
       return true;
     }
 
-  /* the rx packet is waiting to be claimed by network
-   * or there is nothing to be received
-   */
+  /* no RX packet, try to alloc */
 
+  priv->rx_pkt = netpkt_alloc(&priv->dev, NETPKT_RX);
+  if (priv->rx_pkt)
+    {
+      return true;
+    }
+
+  ninfo("info: Failed to alloc rx netpkt\n");
+  /* there is no buffer for rx data */
   return false;
 }
 
@@ -889,6 +875,7 @@ static int ncv_exchange_chunk(FAR struct ncv7410_driver_s *priv,
   ncv_lock_spi(priv);
   ncv_config_spi(priv);
   ncv_select_spi(priv);
+  // this depends on SW CS !!!
   SPI_EXCHANGE(priv->spi, (uint8_t *) &header, rxbuf, 4);
   SPI_EXCHANGE(priv->spi, txbuf,
                &rxbuf[4], NCV_CHUNK_DEFAULT_PAYLOAD_SIZE - 4);
@@ -1161,10 +1148,15 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
   regval =   (1 << OA_CONFIG0_SYNC_POS)
            | (1 << OA_CONFIG0_CSARFE_POS)
            | (1 << OA_CONFIG0_ZARFE_POS)
-           /* | (1 << OA_CONFIG0_TXCTE_POS) */
-           /* | (1 << OA_CONFIG0_RXCTE_POS) */
+           | (1 << OA_CONFIG0_RXCTE_POS)  /* a bit lower latency */
            | (3 << OA_CONFIG0_TXCTHRESH_POS)
            | (6 << OA_CONFIG0_CPS_POS);
+
+#ifdef CONFIG_NCV7410_HOST_FCS
+  /* enable FCS validation on MAC-PHY */
+
+  /* regval |= (1 << OA_CONFIG0_TXFCSVE_POS); */
+#endif
 
   if (ncv_write_reg(priv, OA_CONFIG0_REGID, regval))
     {
@@ -1397,6 +1389,7 @@ static void ncv_print_footer(uint32_t footer)
  *
  ****************************************************************************/
 
+// should I use mutex??
 static int ncv7410_ifup(FAR struct netdev_lowerhalf_s *dev)
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) dev;
@@ -1420,8 +1413,8 @@ static int ncv7410_ifup(FAR struct netdev_lowerhalf_s *dev)
       priv->ifstate = NCV_INIT_DOWN;
     }
 
-  /* set NCV_INIT_UP prior to enabling to allow ncv_interrupt_work right after
-   * MAC-PHY enable
+  /* set NCV_INIT_UP prior to enabling to allow ncv_interrupt_work right
+   * after MAC-PHY enable
    */
 
   priv->ifstate = NCV_INIT_UP;
@@ -1458,11 +1451,12 @@ static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev)
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) dev;
 
-  ncv_mutex_lock(&priv->mutex);
+  nxmutex_lock(&priv->mutex);
 
   if (priv->ifstate != NCV_INIT_UP)
     {
-      ncv_mutex_unlock(&priv->mutex);
+      nxmutex_unlock(&priv->mutex);
+      // change to "not up"
       nerr("Tried to bring ncv7410 interface down when already down\n");
       return -EINVAL;
     }
@@ -1472,7 +1466,7 @@ static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev)
 
   if (ncv_disable(priv) == ERROR)
     {
-      ncv_mutex_unlock(&priv->mutex);
+      nxmutex_unlock(&priv->mutex);
       nerr("Error disabling ncv7410\n");
       return -EIO;
     }
@@ -1481,7 +1475,7 @@ static int ncv7410_ifdown(FAR struct netdev_lowerhalf_s *dev)
 
   priv->ifstate = NCV_INIT_DOWN;
 
-  ncv_mutex_unlock(&priv->mutex);
+  nxmutex_unlock(&priv->mutex);
 
   return OK;
 }
@@ -1506,7 +1500,7 @@ static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) dev;
 
-  ncv_mutex_lock(&priv->mutex);
+  nxmutex_lock(&priv->mutex);
 
   if (priv->tx_pkt || priv->ifstate != NCV_INIT_UP)
     {
@@ -1514,7 +1508,7 @@ static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
        * or the interface was shut down while waiting for the mutex
        */
 
-      ncv_mutex_unlock(&priv->mutex);
+      nxmutex_unlock(&priv->mutex);
       return -EAGAIN;
     }
 
@@ -1522,7 +1516,7 @@ static int ncv7410_transmit(FAR struct netdev_lowerhalf_s *dev,
   priv->tx_pkt_len = netpkt_getdatalen(dev, pkt);
   priv->tx_pkt = pkt;
 
-  ncv_mutex_unlock(&priv->mutex);
+  nxmutex_unlock(&priv->mutex);
 
   work_queue(NCVWORK, &priv->io_work, ncv_io_work, priv, 0);
   return OK;
@@ -1547,20 +1541,20 @@ static FAR netpkt_t *ncv7410_receive(FAR struct netdev_lowerhalf_s *dev)
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *) dev;
 
-  netpkt_t *retval;
+  netpkt_t *retval; // this can be moved to the if
 
-  ncv_mutex_lock(&priv->mutex);
+  nxmutex_lock(&priv->mutex);
 
   if (priv->rx_pkt_ready)
     {
       retval = priv->rx_pkt;
       priv->rx_pkt_ready = false;
       priv->rx_pkt = NULL;
-      ncv_mutex_unlock(&priv->mutex);
+      nxmutex_unlock(&priv->mutex);
       return retval;
     }
 
-  ncv_mutex_unlock(&priv->mutex);
+  nxmutex_unlock(&priv->mutex);
 
   return NULL;
 }
@@ -1575,8 +1569,6 @@ static const struct netdev_ops_s g_ncv7410_ops =
   .ifdown   = ncv7410_ifdown,
   .transmit = ncv7410_transmit,
   .receive  = ncv7410_receive,
-  /* TODO: consult addmac and rmmac */
-  /* TODO: add ioctl */
 };
 
 /****************************************************************************
@@ -1643,9 +1635,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq)
 
   /* init mutex if needed */
 
-#ifdef NCV_MUTEX
   nxmutex_init(&priv->mutex);
-#endif
 
   /* Register the device with the OS */
 

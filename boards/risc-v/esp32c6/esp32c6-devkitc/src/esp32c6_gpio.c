@@ -62,8 +62,12 @@
 
 /* Pin 1 and 2 are used for this example as GPIO outputs. */
 
-#define GPIO_OUT1  1
-#define GPIO_OUT2  2
+/* #define GPIO_OUT1  1 */
+/* #define GPIO_OUT2  2 */
+
+#define GPIO_OUT1 15
+#define GPIO_OUT2 23
+
 
 #if !defined(CONFIG_ESPRESSIF_GPIO_IRQ) && BOARD_NGPIOINT > 0
 #  error "NGPIOINT is > 0 and GPIO interrupts aren't enabled"
