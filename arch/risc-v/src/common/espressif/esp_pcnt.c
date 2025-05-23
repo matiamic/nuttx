@@ -841,6 +841,7 @@ struct cap_lowerhalf_s *esp_pcnt_new_unit(
   spin_unlock_irqrestore(&pcnt_units[unit_id].lock, flags);
   cpinfo("Allocated pcnt unit: %" PRId16 "\n", unit_id);
 
+  nerr("pass\n");
   if (!g_pcnt_intr)
     {
       nxmutex_lock(&g_pcnt_lock);
@@ -851,12 +852,18 @@ struct cap_lowerhalf_s *esp_pcnt_new_unit(
           nxmutex_unlock(&g_pcnt_lock);
           return NULL;
         }
+      nerr("registered default isr\n");
 
       g_pcnt_intr = true;
       nxmutex_unlock(&g_pcnt_lock);
     }
 
   pcnt_ll_disable_all_events(ctx.dev, unit_id);
+
+  /* michal */
+  pcnt_ll_enable_high_limit_event(ctx.dev, unit_id, config->accum_count);
+  pcnt_ll_enable_low_limit_event(ctx.dev, unit_id, config->accum_count);
+
   pcnt_ll_enable_glitch_filter(ctx.dev, unit_id, false);
   pcnt_ll_set_high_limit_value(ctx.dev, unit_id, config->high_limit);
   pcnt_ll_set_low_limit_value(ctx.dev, unit_id, config->low_limit);

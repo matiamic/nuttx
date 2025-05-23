@@ -41,7 +41,9 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define PCNT_HIGH_LIMIT 1000
+/* #define PCNT_HIGH_LIMIT  0x4000 */
+/* #define PCNT_LOW_LIMIT  -0x4000 */
+#define PCNT_HIGH_LIMIT  1000
 #define PCNT_LOW_LIMIT  -1000
 
 #define PCNT_GLITCH_FILTER(pcnt, thres) pcnt->ops->ioctl(pcnt,          \
@@ -180,7 +182,7 @@ int board_pcnt_initialize(void)
   {
     .high_limit = PCNT_HIGH_LIMIT,
     .low_limit =  PCNT_LOW_LIMIT,
-    .accum_count = false,
+    .accum_count = true, // michal
   };
 
   struct esp_pcnt_chan_config_s chan0_cfg =
@@ -194,14 +196,22 @@ int board_pcnt_initialize(void)
   };
 
 #ifdef CONFIG_ESP_PCNT_U0
+#ifdef CONFIG_ESP_PCNT_U0_QE
+  chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U0_CH0_EDGE_PIN;
+  chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U0_CH1_LEVEL_PIN;
+
+  chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U0_CH1_LEVEL_PIN;
+  chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U0_CH0_EDGE_PIN;
+#else
   chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U0_CH0_EDGE_PIN;
   chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U0_CH0_LEVEL_PIN;
+
+  chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U0_CH1_EDGE_PIN;
+  chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U0_CH1_LEVEL_PIN;
+#endif
 #ifdef CONFIG_ESP_PCNT_TEST_MODE
   chan0_cfg.flags = ESP_PCNT_CHAN_IO_LOOPBACK;
 #endif
-
-  chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U0_CH1_LEVEL_PIN;
-  chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U0_CH1_EDGE_PIN;
 #ifndef CONFIG_ESP_PCNT_U0_FILTER_EN
   glitch_threshold = 0;
 #else
@@ -230,11 +240,19 @@ int board_pcnt_initialize(void)
 #endif
 
 #ifdef CONFIG_ESP_PCNT_U1
+#ifdef CONFIG_ESP_PCNT_U1_QE
+  chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U1_CH0_EDGE_PIN;
+  chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U1_CH1_LEVEL_PIN;
+
+  chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U1_CH1_LEVEL_PIN;
+  chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U1_CH0_EDGE_PIN;
+#else
   chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U1_CH0_EDGE_PIN;
   chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U1_CH0_LEVEL_PIN;
 
   chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U1_CH1_EDGE_PIN;
   chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U1_CH1_LEVEL_PIN;
+#endif
 #ifndef CONFIG_ESP_PCNT_U1_FILTER_EN
   glitch_threshold = 0;
 #else
@@ -263,11 +281,19 @@ int board_pcnt_initialize(void)
 #endif
 
 #ifdef CONFIG_ESP_PCNT_U2
+#ifdef CONFIG_ESP_PCNT_U2_QE
+  chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U2_CH0_EDGE_PIN;
+  chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U2_CH1_LEVEL_PIN;
+
+  chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U2_CH1_LEVEL_PIN;
+  chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U2_CH0_EDGE_PIN;
+#else
   chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U2_CH0_EDGE_PIN;
   chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U2_CH0_LEVEL_PIN;
 
   chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U2_CH1_EDGE_PIN;
   chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U2_CH1_LEVEL_PIN;
+#endif
 #ifndef CONFIG_ESP_PCNT_U2_FILTER_EN
   glitch_threshold = 0;
 #else
@@ -297,11 +323,19 @@ int board_pcnt_initialize(void)
 #endif
 
 #ifdef CONFIG_ESP_PCNT_U3
+#ifdef CONFIG_ESP_PCNT_U3_QE
+  chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U3_CH0_EDGE_PIN;
+  chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U3_CH1_LEVEL_PIN;
+
+  chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U3_CH1_LEVEL_PIN;
+  chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U3_CH0_EDGE_PIN;
+#else
   chan0_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U3_CH0_EDGE_PIN;
   chan0_cfg.level_gpio_num = CONFIG_ESP_PCNT_U3_CH0_LEVEL_PIN;
 
   chan1_cfg.edge_gpio_num = CONFIG_ESP_PCNT_U3_CH1_EDGE_PIN;
   chan1_cfg.level_gpio_num = CONFIG_ESP_PCNT_U3_CH1_LEVEL_PIN;
+#endif
 #ifndef CONFIG_ESP_PCNT_U3_FILTER_EN
   glitch_threshold = 0;
 #else
