@@ -55,7 +55,8 @@
  * overridden with CONFIG_STM32H7_FLASH_OVERRIDE_x
  */
 
-#if defined (CONFIG_ARCH_CHIP_STM32H743AG) || \
+#if defined (CONFIG_ARCH_CHIP_STM32H723ZG) || \
+    defined (CONFIG_ARCH_CHIP_STM32H743AG) || \
     defined (CONFIG_ARCH_CHIP_STM32H743AI) || \
     defined (CONFIG_ARCH_CHIP_STM32H743BG) || \
     defined (CONFIG_ARCH_CHIP_STM32H743BI) || \
