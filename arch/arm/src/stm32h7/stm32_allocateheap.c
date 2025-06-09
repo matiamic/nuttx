@@ -136,7 +136,24 @@
 #  define SRAM_START STM32_SRAM123_BASE
 #  define SRAM_END   (SRAM_START + STM32H7_SRAM123_SIZE - \
                       STM32H7_SRAM3_SIZE)
+
+#  undef SRAM123_START
+#  undef SRAM123_END
+
 #endif
+
+#  undef SRAM123_START
+#  undef SRAM123_END
+
+#  undef SRAM_START
+#  undef SRAM_END
+
+#define SRAM_START 0x24000000
+#define SRAM_END   (SRAM_START+320*1024)
+
+#define SRAM123_START 0x30000000
+#define SRAM123_END  (SRAM123_START+32*1024)
+
 
 #undef HAVE_SRAM4
 #if !defined(CONFIG_STM32H7_SRAM4EXCLUDE)

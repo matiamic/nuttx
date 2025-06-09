@@ -101,12 +101,7 @@ MEMORY
   flash (rx)  : ORIGIN = 0x08000000, LENGTH = 2048K
   dtcm1 (rwx) : ORIGIN = 0x20000000, LENGTH =   64K
   dtcm2 (rwx) : ORIGIN = 0x20010000, LENGTH =   64K
-  sram  (rwx) : ORIGIN = 0x24000000, LENGTH =  512K
-  sram1 (rwx) : ORIGIN = 0x30000000, LENGTH =  128K
-  sram2 (rwx) : ORIGIN = 0x30020000, LENGTH =  128K
-  sram3 (rwx) : ORIGIN = 0x30040000, LENGTH =   32K
-  sram4 (rwx) : ORIGIN = 0x38000000, LENGTH =   64K
-  bbram (rwx) : ORIGIN = 0x38800000, LENGTH =    4K
+  sram  (rwx) : ORIGIN = 0x24000000, LENGTH =  320K
 }
 
 OUTPUT_ARCH(arm)
