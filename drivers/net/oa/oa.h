@@ -27,6 +27,17 @@
  * Included Files
  ****************************************************************************/
 
+#include <stdint.h>
+#include <stdbool.h>
+
+#include <nuttx/spi/spi.h>
+#include <sys/endian.h>
+
+#include <nuttx/wqueue.h>
+#include <nuttx/mutex.h>
+
+#include <nuttx/net/netdev_lowerhalf.h>
+
 #include <nuttx/bits.h>
 #include <stdint.h>
 
@@ -104,6 +115,10 @@ typedef uint32_t oa_regid_t;
 #define OA_CONFIG0_SEQE_POS       4
 #define OA_CONFIG0_CPS_MASK       GENMASK(2, 0)
 #define OA_CONFIG0_CPS_POS        0
+#define OA_CONFIG0_CPS_64         6
+#define OA_CONFIG0_CPS_32         5
+#define OA_CONFIG0_CPS_16         4
+#define OA_CONFIG0_CPS_8          3
 
 #define OA_STATUS0_MMS            0
 #define OA_STATUS0_ADDR           0x8U
@@ -233,5 +248,79 @@ typedef uint32_t oa_regid_t;
 #define oa_rx_frame_timestamp_added(f)  _oa_control_field(f, RTSA)
 #define oa_rx_frame_timestamp_parity(f) _oa_control_field(f, RTSP)
 #define oa_mac_phy_sync(f)              _oa_control_field(f, SYNC)
+
+/****************************************************************************
+ * Public Types
+ ****************************************************************************/
+
+enum oa_ifstate_e
+{
+  OA_RESET,
+  OA_INIT_DOWN,
+  OA_INIT_UP
+};
+
+struct oa_driver_s;
+struct oa_ops_s
+{
+  CODE int (*config)(struct oa_driver_s *);
+  CODE int (*init_mac)(struct oa_driver_s *);
+  CODE int (*add_mac)(struct oa_driver_s *, uint8_t *mac);
+  CODE int (*rm_mac)(struct oa_driver_s *, uint8_t *mac);
+  CODE int (*ioctl)(struct oa_driver_s *, int cmd, unsigned long arg);
+};
+
+struct oa_driver_s
+{
+  struct netdev_lowerhalf_s dev;   /* Driver data visible by the net stack
+                                    * (must be placed first)                */
+  mutex_t lock;                    /* Lock for data race prevention         */
+  FAR struct spi_dev_s *spi;       /* The SPI device instance               */
+  int irqnum;                      /* irq number of the interrupt pin       */
+  struct oa_config_s *config;      /* Driver configuration                  */
+  uint8_t ifstate;                 /* Driver state from oa_ifstate_e enum   */
+
+  struct work_s interrupt_work;    /* wq handle for the interrupt work      */
+  struct work_s io_work;           /* wq handle for the io work             */
+
+  int txc;                         /* TX credits                            */
+  int rca;                         /* RX chunks available                   */
+
+  FAR netpkt_t *tx_pkt;            /* Pointer to the TX netpacket           */
+  FAR netpkt_t *rx_pkt;            /* Pointer to the RX netpacket           */
+  int tx_pkt_idx;                  /* Position in the TX netpacket          */
+  int rx_pkt_idx;                  /* Position in the RX netpacket          */
+  int tx_pkt_len;                  /* Length of the TX packet               */
+  bool rx_pkt_ready;               /* RX packet ready to be received flag   */
+
+  struct oa_ops_s ops;             /* MAC-PHY device-specific hooks         */
+};
+
+#ifdef __cplusplus
+#define EXTERN extern "C"
+extern "C"
+{
+#else
+#define EXTERN extern
+#endif
+
+/****************************************************************************
+ * Public Function Prototypes
+ ****************************************************************************/
+
+int oa_write_reg(FAR struct oa_driver_s *priv,
+                         oa_regid_t regid, uint32_t word);
+
+int oa_read_reg(FAR struct oa_driver_s *priv,
+                        oa_regid_t regid, FAR uint32_t *word);
+
+int oa_set_clear_bits(FAR struct oa_driver_s *priv,
+                              oa_regid_t regid,
+                              uint32_t setbits, uint32_t clearbits);
+
+#undef EXTERN
+#ifdef __cplusplus
+}
+#endif
 
 #endif/* __DRIVERS_NET_OA_H */
