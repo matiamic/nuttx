@@ -55,7 +55,6 @@ struct oa_config_s
   uint32_t id;
 
   uint32_t frequency;
-  /* TODO: include hooks for interrupt logic */
 
   int interrupt_pin;
 
@@ -75,8 +74,8 @@ struct oa_config_s
  *   Initialize the Ethernet driver.
  *
  * Input Parameters:
- *   spi - reference to the SPI driver state data
- *   irq - irq number of the pin connected to MAC-PHY's interrupt signal
+ *   spi    - reference to the SPI driver state data
+ *   config - reference to the predefined configuration
  *
  * Returned Value:
  *   On success OK is returned, otherwise negated errno is returned.
@@ -93,4 +92,3 @@ int oa_initialize(FAR struct spi_dev_s *spi,
 #endif
 
 #endif /* __INCLUDE_NUTTX_NET_OA_H */
-
