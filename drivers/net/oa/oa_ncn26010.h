@@ -33,7 +33,7 @@
  * Preprocessor Macros
  ****************************************************************************/
 
-#define OA_NCN26010_DEVTYPE yyy
+#define OA_NCN26010_DEVTYPE 456
 
 #ifdef __cplusplus
 #define EXTERN extern "C"
