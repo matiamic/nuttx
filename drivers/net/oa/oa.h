@@ -53,8 +53,8 @@
 
 #define OA_SPI_NBITS 8
 
-#define NCV_CHUNK_DEFAULT_PAYLOAD_SIZE 64
-#define NCV_CHUNK_DEFAULT_SIZE (NCV_CHUNK_DEFAULT_PAYLOAD_SIZE + 4)
+#define OA_CHUNK_DEFAULT_PAYLOAD_SIZE 64
+#define OA_CHUNK_DEFAULT_SIZE (NCV_CHUNK_DEFAULT_PAYLOAD_SIZE + 4)
 
 typedef uint32_t oa_regid_t;
 
@@ -232,22 +232,26 @@ typedef uint32_t oa_regid_t;
 #define OA_TXC_MASK  GENMASK(5, 1)
 #define OA_TXC_POS   1
 
-#define _oa_control_field(f, fieldname) \
-    ((int) ((f & OA_##fieldname##_MASK) >> OA_##fieldname##_POS))
+/* General macro for extracting fileds from OA registers */
 
-#define oa_tx_credits(f)                _oa_control_field(f, TXC)
-#define oa_rx_available(f)              _oa_control_field(f, RCA)
-#define oa_header_bad(f)                _oa_control_field(f, HDRB)
-#define oa_ext_status(f)                _oa_control_field(f, EXST)
-#define oa_data_valid(f)                _oa_control_field(f, DV)
-#define oa_start_valid(f)               _oa_control_field(f, SV)
-#define oa_start_word_offset(f)         _oa_control_field(f, SWO)
-#define oa_end_valid(f)                 _oa_control_field(f, EV)
-#define oa_end_byte_offset(f)           _oa_control_field(f, EBO)
-#define oa_frame_drop(f)                _oa_control_field(f, FD)
-#define oa_rx_frame_timestamp_added(f)  _oa_control_field(f, RTSA)
-#define oa_rx_frame_timestamp_parity(f) _oa_control_field(f, RTSP)
-#define oa_mac_phy_sync(f)              _oa_control_field(f, SYNC)
+#define oa_get_field(r, fieldname) \
+    ((int) ((r & OA_##fieldname##_MASK) >> OA_##fieldname##_POS))
+
+/* Helper macros for extracting control fields from footers/headers */
+
+#define oa_tx_credits(f)                oa_get_field(f, TXC)
+#define oa_rx_available(f)              oa_get_field(f, RCA)
+#define oa_header_bad(f)                oa_get_field(f, HDRB)
+#define oa_ext_status(f)                oa_get_field(f, EXST)
+#define oa_data_valid(f)                oa_get_field(f, DV)
+#define oa_start_valid(f)               oa_get_field(f, SV)
+#define oa_start_word_offset(f)         oa_get_field(f, SWO)
+#define oa_end_valid(f)                 oa_get_field(f, EV)
+#define oa_end_byte_offset(f)           oa_get_field(f, EBO)
+#define oa_frame_drop(f)                oa_get_field(f, FD)
+#define oa_rx_frame_timestamp_added(f)  oa_get_field(f, RTSA)
+#define oa_rx_frame_timestamp_parity(f) oa_get_field(f, RTSP)
+#define oa_mac_phy_sync(f)              oa_get_field(f, SYNC)
 
 /****************************************************************************
  * Public Types
@@ -255,16 +259,25 @@ typedef uint32_t oa_regid_t;
 
 enum oa_ifstate_e
 {
-  OA_RESET,
-  OA_INIT_DOWN,
-  OA_INIT_UP
+  OA_IFSTATE_RESET,
+  OA_IFSTATE_INIT_DOWN,
+  OA_IFSTATE_INIT_UP,
+};
+
+enum oa_action_e
+{
+  OA_ACTION_CONFIG,   /* Called before OA generic config         */
+  OA_ACTION_INIT_MAC, /* Signal lower to initialize MAC address  */
+  OA_ACTION_IFUP,     /* Called after the interface is enabled   */
+  OA_ACTOIN_IFDOWN,   /* Called before the interface is disabled */
+  OA_ACTION_EXST,     /* Called when EXST is detected in footer  */
+  OA_ACTION_N         /* Number of diferrent OA actions          */
 };
 
 struct oa_driver_s;
 struct oa_ops_s
 {
-  CODE int (*config)(struct oa_driver_s *);
-  CODE int (*init_mac)(struct oa_driver_s *);
+  CODE int (*action)(struct oa_driver_s *, enum oa_action_e);
   CODE int (*add_mac)(struct oa_driver_s *, uint8_t *mac);
   CODE int (*rm_mac)(struct oa_driver_s *, uint8_t *mac);
   CODE int (*ioctl)(struct oa_driver_s *, int cmd, unsigned long arg);
@@ -278,7 +291,7 @@ struct oa_driver_s
   FAR struct spi_dev_s *spi;       /* The SPI device instance               */
   int irqnum;                      /* irq number of the interrupt pin       */
   struct oa_config_s *config;      /* Driver configuration                  */
-  uint8_t ifstate;                 /* Driver state from oa_ifstate_e enum   */
+  enum oa_ifstate_e ifstate;       /* Driver state                          */
 
   struct work_s interrupt_work;    /* wq handle for the interrupt work      */
   struct work_s io_work;           /* wq handle for the io work             */
@@ -293,7 +306,7 @@ struct oa_driver_s
   int tx_pkt_len;                  /* Length of the TX packet               */
   bool rx_pkt_ready;               /* RX packet ready to be received flag   */
 
-  struct oa_ops_s ops;             /* MAC-PHY device-specific hooks         */
+  struct oa_ops_s *ops;            /* MAC-PHY device-specific hooks         */
 };
 
 #ifdef __cplusplus
@@ -309,14 +322,19 @@ extern "C"
  ****************************************************************************/
 
 int oa_write_reg(FAR struct oa_driver_s *priv,
-                         oa_regid_t regid, uint32_t word);
+                 oa_regid_t regid, uint32_t word);
 
 int oa_read_reg(FAR struct oa_driver_s *priv,
-                        oa_regid_t regid, FAR uint32_t *word);
+                oa_regid_t regid, FAR uint32_t *word);
 
 int oa_set_clear_bits(FAR struct oa_driver_s *priv,
-                              oa_regid_t regid,
-                              uint32_t setbits, uint32_t clearbits);
+                      oa_regid_t regid,
+                      uint32_t setbits, uint32_t clearbits);
+
+int oa_store_mac(FAR struct oa_driver_s *priv, uint8_t *mac);
+
+uint8_t oa_bitrev8(uint8_t byte);
+
 
 #undef EXTERN
 #ifdef __cplusplus

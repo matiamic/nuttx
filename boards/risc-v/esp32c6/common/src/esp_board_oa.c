@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/risc-v/esp32c6/common/src/esp_board_ncv7410.c
+ * boards/risc-v/esp32c6/common/src/esp_board_oa.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -32,7 +32,8 @@
 #include <debug.h>
 
 #include <nuttx/spi/spi.h>
-#include <nuttx/net/ncv7410.h>
+#include <nuttx/irq.h>
+#include <nuttx/net/oa.h>
 
 #include <arch/board/board.h>
 
@@ -40,23 +41,61 @@
 #include "espressif/esp_gpio.h"
 
 /****************************************************************************
+ * Private Function Prototypes
+ ****************************************************************************/
+
+static int esp_board_oa_attach(FAR struct oa_config_s *config,
+                               xcpt_t handler,
+                               FAR void *arg);
+
+static void esp_board_oa_enable(FAR struct oa_config_s *config, bool enable);
+
+/****************************************************************************
  * Private Data
  ****************************************************************************/
 
-static struct ncv7410_config_s g_ncv7410_config =
+static struct oa_config_s g_esp_oa_config =
 {
-  .id = SPIDEV_ETHERNET(0)
+  .id            = SPIDEV_ETHERNET(0),
+  .frequency     = 20000000,
+  .chunk_size    = 64,
+  .interrupt_pin = 5,
+  .attach        = esp_board_oa_attach,
+  .enable        = esp_board_oa_enable,
 };
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
+
+static int esp_board_oa_attach(FAR struct oa_config_s *config,
+                               xcpt_t handler, FAR void *arg)
+{
+  esp_configgpio(config->interrupt_pin, INPUT_FUNCTION_2 | PULLUP);
+  irq_attach(ESP_PIN2IRQ(config->interrupt_pin), handler, arg);
+}
+
+static void esp_board_oa_enable(FAR struct oa_config_s *config, bool enable)
+{
+  if (enable)
+    {
+      esp_gpioirqenable(ESP_PIN2IRQ(config->interrupt_pin), FALLING);
+    }
+  else
+    {
+      esp_gpioirqdisable(ESP_PIN2IRQ(config->interrupt_pin));
+    }
+}
 
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
 
 /****************************************************************************
- * Name: board_ncv7410_initialize
+ * Name: board_oa_initialize
  *
  * Description:
- *   Initialize and register the NCV7410 10BASE-T1S network driver.
+ *   Initialize and register the OA 10BASE-T1S network driver.
  *
  * Input Parameters:
  *   None
@@ -66,10 +105,9 @@ static struct ncv7410_config_s g_ncv7410_config =
  *
  ****************************************************************************/
 
-void board_ncv7410_initialize(void)
+void board_oa_initialize(void)
 {
   struct spi_dev_s *spi;
-  int irq;
   int ret;
 
   spi = esp_spibus_initialize(ESPRESSIF_SPI2);
@@ -80,26 +118,17 @@ void board_ncv7410_initialize(void)
       return;
     }
 
-  /* initialize the interrupt GPIO pin as input with PULLUP */
+  /* Bind the SPI port and config to the OA driver */
 
-  esp_configgpio(CONFIG_NCV7410_INT_PIN, INPUT_FUNCTION_2 | PULLUP);
-  irq = ESP_PIN2IRQ(CONFIG_NCV7410_INT_PIN);
-
-  /* Bind the SPI port and interrupt to the NCV7410 driver */
-
-  ret = ncv7410_initialize(spi, irq, &g_ncv7410_config);
+  ret = oa_initialize(spi, &g_esp_oa_config);
   if (ret < 0)
     {
       syslog(LOG_ERR,
-             "ERROR: Failed to bind interrupt and SPI port to the NCV7410"
+             "ERROR: Failed to bind SPI port and config to the OA"
              " network driver: %d\n", ret);
       return;
     }
 
-  /* driver attaches function to the interrupt, now it can be enabled */
-
-  esp_gpioirqenable(irq, FALLING);
-
   syslog(LOG_INFO,
-         "Bound interrupt and SPI port to the NCV7410 network driver\n");
+         "Bound SPI and config to the OA network driver\n");
 }

@@ -33,7 +33,7 @@
  * Preprocessor Macros
  ****************************************************************************/
 
-#define OA_NCV7410_DEVTYPE xxx
+#define OA_NCV7410_DEVTYPE 0x180FF5A1U
 
 #ifdef __cplusplus
 #define EXTERN extern "C"
