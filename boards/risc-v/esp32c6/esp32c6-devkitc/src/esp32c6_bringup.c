@@ -125,8 +125,8 @@
 #  include "espressif/esp_sdm.h"
 #endif
 
-#ifdef CONFIG_NCV7410
-#  include "esp_board_ncv7410.h"
+#ifdef CONFIG_NET_OA
+#  include "esp_board_oa.h"
 #endif
 
 #include "esp32c6-devkitc.h"
@@ -477,11 +477,11 @@ int esp_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_NCV7410
-  ret = board_ncv7410_initialize();
+#ifdef CONFIG_NET_OA
+  ret = board_oa_initialize();
   if (ret < 0)
     {
-      syslog(LOG_ERR, "ERROR: esp_ncv7410_initialize failed: %d\n", ret);
+      syslog(LOG_ERR, "ERROR: esp_oa_initialize failed: %d\n", ret);
     }
 #endif
 

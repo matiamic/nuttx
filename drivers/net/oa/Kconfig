@@ -1,0 +1,24 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+menuconfig NET_OA
+	bool "OPEN Alliance MAC-PHYs"
+	default n
+	depends on NETDEVICES
+	---help---
+		Enable support for OPEN Alliance protocol MAC-PHYs.
+
+if NET_OA
+
+config NET_OA_NCV7410
+	bool "Onsemi NCV7410 Support"
+
+config NET_OA_NCN26010
+	bool "Onsemi NCN26010 Support"
+
+config NET_OA_LAN8650
+	bool "Microchip LAN8650 Support"
+
+endif

@@ -55,6 +55,7 @@ struct oa_config_s
   uint32_t id;
 
   uint32_t frequency;
+  uint8_t chunk_size;
 
   int interrupt_pin;
 

@@ -46,8 +46,8 @@
 #include "oa_ncv7410.h"
 #endif
 
-#ifdef CONFIG_NET_OA_NCN96010
-#include "oa_ncn96010.h"
+#ifdef CONFIG_NET_OA_NCN26010
+#include "oa_ncn26010.h"
 #endif
 
 #ifdef CONFIG_NET_OA_LAN8650
@@ -80,7 +80,7 @@
 #endif
 
 #ifndef CONFIG_SCHED_LPWORK
-#  error "CONFIG_SCHED_LPWORK is needed by NCV7410 driver"
+#  error "CONFIG_SCHED_LPWORK is needed by OA driver"
 #endif
 
 /****************************************************************************
@@ -94,11 +94,11 @@ static int oa_get_parity(uint32_t word);
 /* SPI transfers */
 
 static int oa_poll_footer(FAR struct oa_driver_s *priv,
-                           FAR uint32_t *footer);
+                          FAR uint32_t *footer);
 
 static int oa_exchange_chunk(FAR struct oa_driver_s *priv,
-                              FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
-                              uint32_t header, uint32_t *footer);
+                             FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
+                             uint32_t header, uint32_t *footer);
 
 /* Interrupt handling */
 
@@ -109,11 +109,11 @@ static void oa_interrupt_work(FAR void *arg);
 
 static void oa_io_work(FAR void *arg);
 static uint32_t oa_prepare_chunk_exchange(FAR struct oa_driver_s *priv,
-                                           FAR uint8_t *txbuf);
+                                          FAR uint8_t *txbuf);
 static bool oa_can_rx(FAR struct oa_driver_s *priv);
 static void oa_try_finish_tx_packet(FAR struct oa_driver_s *priv);
 static void oa_handle_rx_chunk(FAR struct oa_driver_s *priv,
-                                uint32_t footer, FAR uint8_t *rxbuf);
+                               uint32_t footer, FAR uint8_t *rxbuf);
 static void oa_finalize_rx_packet(FAR struct oa_driver_s *priv);
 static void oa_release_tx_packet(FAR struct oa_driver_s *priv);
 static void oa_release_rx_packet(FAR struct oa_driver_s *priv);
@@ -123,12 +123,15 @@ static void oa_release_rx_packet(FAR struct oa_driver_s *priv);
 static inline void oa_select_spi(FAR struct oa_driver_s *priv);
 static inline void oa_deselect_spi(FAR struct oa_driver_s *priv);
 
-/* NCV7410 reset and configuration */
+/* OA reset and configuration */
 
 static int oa_reset(FAR struct oa_driver_s *priv);
 static int oa_config(FAR struct oa_driver_s *priv);
 static int oa_enable(FAR struct oa_driver_s *priv);
 static int oa_disable(FAR struct oa_driver_s *priv);
+
+static int oa_get_device_type(FAR struct oa_driver_s *priv,
+                              FAR uint32_t *device_type);
 
 /* Driver buffer manipulation */
 
@@ -139,7 +142,7 @@ static void oa_reset_driver_buffers(FAR struct oa_driver_s *priv);
 static int oa_ifup(FAR struct netdev_lowerhalf_s *dev);
 static int oa_ifdown(FAR struct netdev_lowerhalf_s *dev);
 static int oa_transmit(FAR struct netdev_lowerhalf_s *dev,
-                            FAR netpkt_t *pkt);
+                       FAR netpkt_t *pkt);
 static FAR netpkt_t *oa_receive(FAR struct netdev_lowerhalf_s *dev);
 
 /* Debug */
@@ -186,9 +189,9 @@ static int oa_interrupt(int irq, FAR void *context, FAR void *arg)
 {
   FAR struct oa_driver_s *priv = (FAR struct oa_driver_s *)arg;
 
-  ninfo("NCV7410 interrupt!\n");
+  ninfo("OA interrupt!\n");
 
-  /* schedule interrupt work */
+  /* Schedule interrupt work */
 
   work_queue(OAWORK, &priv->interrupt_work, oa_interrupt_work, priv, 0);
   return OK;
@@ -215,15 +218,15 @@ static void oa_interrupt_work(FAR void *arg)
 
   nxmutex_lock(&priv->lock);
 
-  if (priv->ifstate != OA_INIT_UP)
+  if (priv->ifstate != OA_IFSTATE_INIT_UP)
     {
       nxmutex_unlock(&priv->lock);
       return;
     }
 
-  ninfo("NCV7410 interrupt worker invoked!\n");
+  ninfo("OA interrupt worker invoked!\n");
 
-  /* poll the data chunk footer */
+  /* Poll the data chunk footer */
 
   if (oa_poll_footer(priv, &footer))
     {
@@ -238,19 +241,19 @@ static void oa_interrupt_work(FAR void *arg)
   oa_print_footer(footer);
 #endif
 
-  /* if EXST in the footer, check enabled sources
+  /* If EXST in the footer, check enabled sources
    * STATUS0, link-status in clause 22 phy registers
    * (not yet implemented)
    */
 
-  /* update MAC-PHY buffer status */
+  /* Update MAC-PHY buffer status */
 
   priv->txc = oa_tx_credits(footer);
   priv->rca = oa_rx_available(footer);
 
   if ((priv->tx_pkt && priv->txc) || priv->rca)
     {
-      /* schedule IO work */
+      /* Schedule IO work */
 
       work_queue(OAWORK, &priv->io_work, oa_io_work, priv, 0);
     }
@@ -284,7 +287,7 @@ static void oa_io_work(FAR void *arg)
 
   nxmutex_lock(&priv->lock);
 
-  if (priv->ifstate != OA_INIT_UP)
+  if (priv->ifstate != OA_IFSTATE_INIT_UP)
     {
       nxmutex_unlock(&priv->lock);
       return;
@@ -309,7 +312,7 @@ static void oa_io_work(FAR void *arg)
 
   oa_handle_rx_chunk(priv, footer, rxbuf);
 
-  /* schedule further work if needed */
+  /* Schedule further work if needed */
 
   if ((priv->tx_pkt && priv->txc) || priv->rca)
     {
@@ -336,7 +339,7 @@ static void oa_io_work(FAR void *arg)
  ****************************************************************************/
 
 static uint32_t oa_prepare_chunk_exchange(FAR struct oa_driver_s *priv,
-                                           FAR uint8_t *txbuf)
+                                          FAR uint8_t *txbuf)
 {
   uint32_t header = 0;
   int txlen;
@@ -347,7 +350,7 @@ static uint32_t oa_prepare_chunk_exchange(FAR struct oa_driver_s *priv,
 
       if (priv->tx_pkt_idx == 0)
         {
-          header |=   (1 << OA_SV_POS)   /* Start Valid */
+          header |=   (1 << OA_SV_POS)   /* Start Valid           */
                     | (0 << OA_SWO_POS); /* Start Word Offset = 0 */
         }
 
@@ -355,7 +358,7 @@ static uint32_t oa_prepare_chunk_exchange(FAR struct oa_driver_s *priv,
 
       if (txlen <= OA_CHUNK_DEFAULT_PAYLOAD_SIZE)
         {
-          header |=   (1 << OA_EV_POS)             /* End Valid */
+          header |=   (1 << OA_EV_POS)             /* End Valid       */
                     | ((txlen - 1) << OA_EBO_POS); /* End Byte Offset */
         }
       else
@@ -363,7 +366,7 @@ static uint32_t oa_prepare_chunk_exchange(FAR struct oa_driver_s *priv,
           txlen = OA_CHUNK_DEFAULT_PAYLOAD_SIZE;
         }
 
-      /* copy data from network to txbuf */
+      /* Copy data from network to txbuf */
 
       netpkt_copyout(&priv->dev, txbuf, priv->tx_pkt,
                      txlen, priv->tx_pkt_idx);
@@ -372,7 +375,7 @@ static uint32_t oa_prepare_chunk_exchange(FAR struct oa_driver_s *priv,
 
   if (oa_can_rx(priv) == false)
     {
-      header |= (1 << OA_NORX_POS);  /* no rx */
+      header |= (1 << OA_NORX_POS);  /* No RX */
     }
 
   return header;
@@ -410,7 +413,7 @@ static bool oa_can_rx(FAR struct oa_driver_s *priv)
       return true;
     }
 
-  /* no RX packet, try to alloc */
+  /* No RX packet, try to alloc */
 
   priv->rx_pkt = netpkt_alloc(&priv->dev, NETPKT_RX);
   if (priv->rx_pkt)
@@ -420,7 +423,7 @@ static bool oa_can_rx(FAR struct oa_driver_s *priv)
 
   ninfo("INFO: Failed to alloc rx netpkt\n");
 
-  /* there is no buffer for rx data */
+  /* There is no buffer for RX data */
 
   return false;
 }
@@ -467,17 +470,17 @@ static void oa_try_finish_tx_packet(FAR struct oa_driver_s *priv)
  ****************************************************************************/
 
 static void oa_handle_rx_chunk(FAR struct oa_driver_s *priv,
-                                uint32_t footer, FAR uint8_t *rxbuf)
+                               uint32_t footer, FAR uint8_t *rxbuf)
 {
   int rxlen;
   int newlen;
 
-  /* update buffer status */
+  /* Update buffer status */
 
   priv->txc = oa_tx_credits(footer);
   priv->rca = oa_rx_available(footer);
 
-  /* check rx_pkt && !rx_pkt_ready,
+  /* Check rx_pkt && !rx_pkt_ready,
    * oa_data_valid flag might have been set due to an SPI error
    */
 
@@ -638,7 +641,7 @@ static inline void oa_select_spi(FAR struct oa_driver_s *priv)
   SPI_SETMODE(priv->spi, OA_SPI_MODE);
   SPI_SETBITS(priv->spi, OA_SPI_NBITS);
   SPI_HWFEATURES(priv->spi, 0);  /* disable HW features */
-  SPI_SETFREQUENCY(priv->spi, CONFIG_OA_FREQUENCY);
+  SPI_SETFREQUENCY(priv->spi, priv->config->frequency);
 
   SPI_SELECT(priv->spi, priv->config->id, true);
 }
@@ -672,8 +675,8 @@ static inline void oa_deselect_spi(FAR struct oa_driver_s *priv)
  ****************************************************************************/
 
 static int oa_exchange_chunk(FAR struct oa_driver_s *priv,
-                              FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
-                              uint32_t header, uint32_t *footer)
+                             FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
+                             uint32_t header, uint32_t *footer)
 {
   header |= (1 << OA_DNC_POS);
   header |= (!oa_get_parity(header) << OA_P_POS);
@@ -681,9 +684,9 @@ static int oa_exchange_chunk(FAR struct oa_driver_s *priv,
 
   oa_select_spi(priv);
 
-  /* this depends on SW Chip Select */
+  /* This depends on SW Chip Select */
 
-  SPI_EXCHANGE(priv->spi, (uint8_t *) &header, rxbuf, 4);
+  SPI_EXCHANGE(priv->spi, (uint8_t *)&header, rxbuf, 4);
   SPI_EXCHANGE(priv->spi, txbuf,
                &rxbuf[4], OA_CHUNK_DEFAULT_PAYLOAD_SIZE - 4);
   SPI_EXCHANGE(priv->spi, &txbuf[OA_CHUNK_DEFAULT_PAYLOAD_SIZE - 4],
@@ -763,7 +766,7 @@ static int oa_reset(FAR struct oa_driver_s *priv)
       return ERROR;
     }
 
-  /* check whether the RESET bit cleared itself */
+  /* Check whether the RESET bit cleared itself */
 
   do
     {
@@ -779,7 +782,7 @@ static int oa_reset(FAR struct oa_driver_s *priv)
       return ERROR;
     }
 
-  /* check whether the reset complete flag is set */
+  /* Check whether the reset complete flag is set */
 
   tries = OA_RESET_TRIES;
 
@@ -797,44 +800,17 @@ static int oa_reset(FAR struct oa_driver_s *priv)
       return ERROR;
     }
 
-  /* clear HDRE in STATUS0 (due to a bug in NCV7410) */
+  /* Clear HDRE in STATUS0 (due to a bug in NCV7410) */
+  // move this to device-specific
 
   if (oa_write_reg(priv, OA_STATUS0_REGID, (1 << OA_STATUS0_HDRE_POS)))
     {
       return ERROR;
     }
 
-  /* clear reset complete flag */
+  /* Clear reset complete flag */
 
   if (oa_write_reg(priv, OA_STATUS0_REGID, (1 << OA_STATUS0_RESETC_POS)))
-    {
-      return ERROR;
-    }
-
-  /* blink with LEDs for debugging purposes */
-
-  for (int i = 0; i < 4; i++)
-    {
-      regval = 0x0302;
-      if (oa_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
-        {
-          return ERROR;
-        }
-
-      nxsig_usleep(250000);
-      regval = 0x0203;
-      if (oa_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
-        {
-          return ERROR;
-        }
-
-      nxsig_usleep(250000);
-    }
-
-  /* set DIOs to default */
-
-  regval = NCV_DIO_CONFIG_DEF;
-  if (oa_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
     {
       return ERROR;
     }
@@ -862,86 +838,12 @@ static int oa_reset(FAR struct oa_driver_s *priv)
 static int oa_config(FAR struct oa_driver_s *priv)
 {
   uint32_t regval;
-#ifndef CONFIG_NET_PROMISCUOUS
-  uint8_t *mac = priv->dev.netdev.d_mac.ether.ether_addr_octet;
-#endif
 
-  ninfo("Configuring NCV7410\n");
+  ninfo("Configuring OA\n");
 
-  /* setup LEDs DIO0: txrx blink
-   *            DIO1: link enabled and link status up
-   */
+  /* Enable RX buffer overflow interrupt */
 
-  regval =   (NCV_DIO_TXRX_FUNC << NCV_DIO0_FUNC_POS)
-           | (NCV_DIO_LINK_CTRL_FUNC << NCV_DIO1_FUNC_POS)
-           | (1 << NCV_DIO0_OUT_VAL_POS)
-           | (1 << NCV_DIO1_OUT_VAL_POS);
-
-  if (oa_write_reg(priv, NCV_DIO_CONFIG_REGID, regval))
-    {
-      return ERROR;
-    }
-
-  /* enable MAC TX, RX, enable transmit FCS computation on MAC,
-   * enable MAC address filtering
-   */
-
-  regval =   (1 << NCV_MAC_CONTROL0_FCSA_POS)
-           | (1 << NCV_MAC_CONTROL0_TXEN_POS)
-           | (1 << NCV_MAC_CONTROL0_RXEN_POS)
-           | (1 << NCV_MAC_CONTROL0_ADRF_POS);
-
-#ifdef CONFIG_NET_PROMISCUOUS
-  /* disable MAC address filtering */
-
-  regval &= ~(1 << NCV_MAC_CONTROL0_ADRF_POS);
-#endif
-
-  if (oa_write_reg(priv, NCV_MAC_CONTROL0_REGID, regval))
-    {
-      return ERROR;
-    }
-
-#ifndef CONFIG_NET_PROMISCUOUS
-  /* setup MAC address filter */
-
-  regval =   (mac[2] << 24)
-           | (mac[3] << 16)
-           | (mac[4] << 8)
-           | (mac[5]);
-
-  if (oa_write_reg(priv, NCV_ADDRFILT0L_REGID, regval))
-    {
-      return ERROR;
-    }
-
-  regval =   (1 << 31)  /* enable filter */
-           | (mac[0] << 8)
-           | (mac[1]);
-
-  if (oa_write_reg(priv, NCV_ADDRFILT0H_REGID, regval))
-    {
-      return ERROR;
-    }
-
-  regval = 0xffffffff;
-
-  if (oa_write_reg(priv, NCV_ADDRMASK0L_REGID, regval))
-    {
-      return ERROR;
-    }
-
-  regval = 0x0000ffff;
-
-  if (oa_write_reg(priv, NCV_ADDRMASK0H_REGID, regval))
-    {
-      return ERROR;
-    }
-
-#endif
-
-  /* enable rx buffer overflow interrupt */
-
+  // questionable
   regval = OA_IMSK0_DEF & ~(1 << OA_IMSK0_RXBOEM_POS);
 
   if (oa_write_reg(priv, OA_IMSK0_REGID, regval))
@@ -949,12 +851,12 @@ static int oa_config(FAR struct oa_driver_s *priv)
       return ERROR;
     }
 
-  /* setup SPI protocol and set SYNC flag */
+  /* Setup SPI protocol and set SYNC flag */
 
   regval =   (1 << OA_CONFIG0_SYNC_POS)
            | (1 << OA_CONFIG0_CSARFE_POS)
            | (1 << OA_CONFIG0_ZARFE_POS)
-           | (1 << OA_CONFIG0_RXCTE_POS)  /* a bit lower latency */
+           | (1 << OA_CONFIG0_RXCTE_POS)  /* A bit lower latency */
            | (3 << OA_CONFIG0_TXCTHRESH_POS)
            | (6 << OA_CONFIG0_CPS_POS);
 
@@ -982,13 +884,13 @@ static int oa_config(FAR struct oa_driver_s *priv)
 
 static int oa_enable(FAR struct oa_driver_s *priv)
 {
-  /* enable PHY */
+  /* Enable PHY */
 
   uint32_t setbits;
 
-  ninfo("Enabling NCV7410\n");
+  ninfo("Enabling OA\n");
 
-  /* enable RX and TX in PHY */
+  /* Enable RX and TX in PHY */
 
   setbits = (1 << OA_PHY_CONTROL_LCTL_POS);
 
@@ -997,8 +899,8 @@ static int oa_enable(FAR struct oa_driver_s *priv)
       return ERROR;
     }
 
-  /* enable PHY interrupt */
-
+  /* Enable PHY interrupt */
+  // questionable
   setbits = (1 << OA_IMSK0_PHYINTM_POS);
 
   if (oa_set_clear_bits(priv, OA_IMSK0_REGID, setbits, 0))
@@ -1025,13 +927,13 @@ static int oa_enable(FAR struct oa_driver_s *priv)
 
 static int oa_disable(FAR struct oa_driver_s *priv)
 {
-  /* disable PHY */
+  /* Disable PHY */
 
   uint32_t clearbits;
 
-  ninfo("Disabling NCV7410\n");
+  ninfo("Disabling OA\n");
 
-  /* disable PHY interrupt */
+  /* Disable PHY interrupt */
 
   clearbits = (1 << OA_IMSK0_PHYINTM_POS);
 
@@ -1040,7 +942,7 @@ static int oa_disable(FAR struct oa_driver_s *priv)
       return ERROR;
     }
 
-  /* disable RX and TX in PHY */
+  /* Disable RX and TX in PHY */
 
   clearbits = (1 << OA_PHY_CONTROL_LCTL_POS);
 
@@ -1050,6 +952,27 @@ static int oa_disable(FAR struct oa_driver_s *priv)
     }
 
   return OK;
+}
+
+/****************************************************************************
+ * Name: oa_get_device_type
+ *
+ * Description:
+ *   Read the device type from the PHYID register.
+ *
+ * Input Parameters:
+ *   priv        - pointer to the driver-specific state structure
+ *   device_type - pointer to the destination of the PHYID value
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
+static int oa_get_device_type(FAR struct oa_driver_s *priv,
+                              FAR uint32_t *device_type)
+{
+  return oa_read_reg(priv, OA_PHYID_REGID, device_type);
 }
 
 /****************************************************************************
@@ -1122,14 +1045,6 @@ static void oa_print_footer(uint32_t footer)
 }
 #endif
 
-// TODO: make public include/nuttx or drivers/net ???
-// probably include ... see netdev_lowerhalf.h
-void oa_store_mac_address(struct oa_driver_s *priv,
-                          uint8_t *mac)
-{
-  memcpy(&priv->dev.netdev.d_mac.ether, mac, sizeof(struct ether_addr));
-}
-
 /****************************************************************************
  * Netdev upperhalf callbacks
  ****************************************************************************/
@@ -1152,39 +1067,39 @@ static int oa_ifup(FAR struct netdev_lowerhalf_s *dev)
 {
   FAR struct oa_driver_s *priv = (FAR struct oa_driver_s *)dev;
 
-  if (priv->ifstate == OA_INIT_UP)
+  if (priv->ifstate == OA_IFSTATE_INIT_UP)
     {
-      nerr("Tried to bring NCV7410 interface up when already up\n");
+      nerr("Tried to bring OA interface up when already up\n");
       return -EINVAL;
     }
 
-  ninfo("Bringing up NCV7410\n");
+  ninfo("Bringing up OA\n");
 
-  if (priv->ifstate == OA_RESET)
+  if (priv->ifstate == OA_IFSTATE_RESET)
     {
       if (oa_config(priv) == ERROR)
         {
-          nerr("Error configuring NCV7410\n");
+          nerr("Error configuring OA\n");
           return -EIO;
         }
 
-      priv->ifstate = OA_INIT_DOWN;
+      priv->ifstate = OA_IFSTATE_INIT_DOWN;
     }
 
-  /* set OA_INIT_UP prior to enabling to allow oa_interrupt_work right
+  /* Set OA_IFSTATE_INIT_UP prior to enabling to allow oa_interrupt_work right
    * after MAC-PHY enable
    */
 
-  priv->ifstate = OA_INIT_UP;
+  priv->ifstate = OA_IFSTATE_INIT_UP;
 
   if (oa_enable(priv) == ERROR)
     {
-      nerr("Error enabling NCV7410\n");
-      priv->ifstate = OA_INIT_DOWN;
+      nerr("Error enabling OA\n");
+      priv->ifstate = OA_IFSTATE_INIT_DOWN;
       return -EIO;
     }
 
-  /* schedule interrupt work to initialize txc and rca */
+  /* Schedule interrupt work to initialize txc and rca */
 
   work_queue(OAWORK, &priv->interrupt_work, oa_interrupt_work, priv, 0);
 
@@ -1211,10 +1126,10 @@ static int oa_ifdown(FAR struct netdev_lowerhalf_s *dev)
 
   nxmutex_lock(&priv->lock);
 
-  if (priv->ifstate != OA_INIT_UP)
+  if (priv->ifstate != OA_IFSTATE_INIT_UP)
     {
       nxmutex_unlock(&priv->lock);
-      nerr("Tried to bring the NCV7410 interface down but it is not up\n");
+      nerr("Tried to bring the OA interface down but it is not up\n");
       return -EINVAL;
     }
 
@@ -1224,13 +1139,13 @@ static int oa_ifdown(FAR struct netdev_lowerhalf_s *dev)
   if (oa_disable(priv) == ERROR)
     {
       nxmutex_unlock(&priv->lock);
-      nerr("Error disabling NCV7410\n");
+      nerr("Error disabling OA\n");
       return -EIO;
     }
 
   oa_reset_driver_buffers(priv);
 
-  priv->ifstate = OA_INIT_DOWN;
+  priv->ifstate = OA_IFSTATE_INIT_DOWN;
 
   nxmutex_unlock(&priv->lock);
 
@@ -1259,10 +1174,10 @@ static int oa_transmit(FAR struct netdev_lowerhalf_s *dev,
 
   nxmutex_lock(&priv->lock);
 
-  if (priv->tx_pkt || priv->ifstate != OA_INIT_UP)
+  if (priv->tx_pkt || priv->ifstate != OA_IFSTATE_INIT_UP)
     {
-      /* previous tx packet was not yet sent to the network
-       * or the interface was shut down while waiting for the lock
+      /* Previous TX packet was not yet sent to the network
+       * or the interface has been shut down while waiting for the lock
        */
 
       nxmutex_unlock(&priv->lock);
@@ -1334,28 +1249,28 @@ static FAR netpkt_t *oa_receive(FAR struct netdev_lowerhalf_s *dev)
  *
  ****************************************************************************/
 
-static int oa_write_reg(FAR struct oa_driver_s *priv,
-                         oa_regid_t regid, uint32_t word)
+int oa_write_reg(FAR struct oa_driver_s *priv,
+                 oa_regid_t regid, uint32_t word)
 {
   uint32_t txdata[3];
   uint32_t rxdata[3];
   uint8_t  mms  = OA_REGID_GET_MMS(regid);
   uint16_t addr = OA_REGID_GET_ADDR(regid);
 
-  /* prepare header */
+  /* Prepare header */
 
   uint32_t header =   (1    << OA_WNR_POS)   /* Write Not Read */
                     | (mms  << OA_MMS_POS)
                     | (addr << OA_ADDR_POS);
   int parity = oa_get_parity(header);
-  header |= parity ? 0 : OA_P_MASK;  /* make header odd parity */
+  header |= parity ? 0 : OA_P_MASK;  /* Make header odd parity */
 
-  /* convert to big endian */
+  /* Convert to big endian */
 
   header = htobe32(header);
   word = htobe32(word);
 
-  /* prepare exchange */
+  /* Prepare exchange */
 
   txdata[0] = header;
   txdata[1] = word;
@@ -1389,8 +1304,8 @@ static int oa_write_reg(FAR struct oa_driver_s *priv,
  *
  ****************************************************************************/
 
-static int oa_read_reg(FAR struct oa_driver_s *priv,
-                        oa_regid_t regid, FAR uint32_t *word)
+int oa_read_reg(FAR struct oa_driver_s *priv,
+                oa_regid_t regid, FAR uint32_t *word)
 {
   uint32_t txdata[3];
   uint32_t rxdata[3];
@@ -1399,18 +1314,18 @@ static int oa_read_reg(FAR struct oa_driver_s *priv,
   int parity;
   uint32_t header;
 
-  /* prepare header */
+  /* Prepare header */
 
   header =   (mms  << OA_MMS_POS)
            | (addr << OA_ADDR_POS);
   parity = oa_get_parity(header);
-  header |= parity ? 0 : OA_P_MASK;  /* make header odd parity */
+  header |= parity ? 0 : OA_P_MASK;  /* Make header odd parity */
 
-  /* convert to big endian */
+  /* Convert to big endian */
 
   header = htobe32(header);
 
-  /* prepare exchange */
+  /* Prepare exchange */
 
   txdata[0] = header;
 
@@ -1448,9 +1363,9 @@ static int oa_read_reg(FAR struct oa_driver_s *priv,
  *
  ****************************************************************************/
 
-static int oa_set_clear_bits(FAR struct oa_driver_s *priv,
-                              oa_regid_t regid,
-                              uint32_t setbits, uint32_t clearbits)
+int oa_set_clear_bits(FAR struct oa_driver_s *priv,
+                      oa_regid_t regid,
+                      uint32_t setbits, uint32_t clearbits)
 {
   uint32_t regval;
 
@@ -1468,6 +1383,51 @@ static int oa_set_clear_bits(FAR struct oa_driver_s *priv,
     }
 
   return OK;
+}
+
+/****************************************************************************
+ * Name: oa_set_clear_bits
+ *
+ * Description:
+ *   Store the given MAC address into the net driver structure.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to an array containing the MAC address
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
+void oa_store_mac_address(struct oa_driver_s *priv,
+                          uint8_t *mac)
+{
+  memcpy(&priv->dev.netdev.d_mac.ether, mac, sizeof(struct ether_addr));
+}
+
+/****************************************************************************
+ * Name: oa_bitrev8
+ *
+ * Description:
+ *   Perform a bit reverse of a byte.
+ *
+ * Input Parameters:
+ *   byte - byte to be reversed
+ *
+ * Returned Value:
+ *   Byte with reversed bits is returned.
+ *
+ ****************************************************************************/
+
+uint8_t oa_bitrev8(uint8_t byte)
+{
+  /* https://stackoverflow.com/a/2602885 */
+
+  byte = (byte & 0xf0) >> 4 | (byte & 0x0f) << 4;
+  byte = (byte & 0xcc) >> 2 | (byte & 0x33) << 2;
+  byte = (byte & 0xaa) >> 1 | (byte & 0x55) << 1;
+  return byte;
 }
 
 /****************************************************************************
@@ -1495,7 +1455,7 @@ int oa_initialize(FAR struct spi_dev_s *spi,
 
   /* Setup a dummy driver so SPI transfers are possible using the same interface */
 
-  struct oa_driver_s dummy;
+  struct oa_driver_s dummy = { 0 };
   dummy.spi = spi;
   dummy.config = config;
 
@@ -1508,7 +1468,7 @@ int oa_initialize(FAR struct spi_dev_s *spi,
       goto errout;
     }
 
-  /* Get device type from MAC-PHY (OA common) registers */
+  /* Get device type from MAC-PHY OA common registers */
 
   if (oa_get_device_type(&dummy, &device_type))
     {
@@ -1523,22 +1483,23 @@ int oa_initialize(FAR struct spi_dev_s *spi,
     {
 #ifdef CONFIG_NET_OA_NCV7410
       case OA_NCV7410_DEVTYPE:
-          priv = oa_ncv7410_initialize(spi, config)
+          priv = oa_ncv7410_initialize(spi, config);
           break;
 #endif
 #ifdef CONFIG_NET_OA_NCN26010
       case OA_NCN26010_DEVTYPE:
-          priv = oa_ncv7410_initialize(spi, config)
+          priv = oa_ncn26010_initialize(spi, config);
           break;
 #endif
 #ifdef CONFIG_NET_OA_LAN8650
       case OA_LAN8650_DEVTYPE:
-          priv = oa_ncv7410_initialize(spi, config)
+          priv = oa_lan8650_initialize(spi, config);
           break;
 #endif
       default:
           retval = -EINVAL;
-          nerr("Unknown device type\n");
+          nerr("Unknown device type, is the support enabled in Kconfig? "
+               "Does the revision match?\n");
           goto errout;
     }
 
@@ -1552,11 +1513,11 @@ int oa_initialize(FAR struct spi_dev_s *spi,
   priv->spi = spi;       /* Save the SPI instance                   */
   priv->config = config; /* Save the reference to the configuration */
 
-  priv->ifstate = OA_RESET;
+  priv->ifstate = OA_IFSTATE_RESET;
 
   /* Init MAC address */
 
-  if (priv->ops->init_mac != NULL && priv->ops->init_mac(priv))
+  if (priv->ops->action && priv->ops->action(priv, OA_ACTION_INIT_MAC))
     {
       nerr("Error initializing MAC address\n");
       retval = -EIO;
@@ -1564,6 +1525,20 @@ int oa_initialize(FAR struct spi_dev_s *spi,
     }
 
   /* Attach ISR */
+
+  if (! priv->config->attach)
+    {
+      nerr("Error: Attach callback not provided by caller\n");
+      retval = -EINVAL;
+      goto errout;
+    }
+
+  if (! priv->config->enable)
+    {
+      nerr("Error: Enable callback not provided by caller\n");
+      retval = -EINVAL;
+      goto errout;
+    }
 
   priv->config->attach(priv->config, oa_interrupt, priv);
 

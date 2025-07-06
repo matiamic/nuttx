@@ -33,7 +33,7 @@
  * Preprocessor Macros
  ****************************************************************************/
 
-#define OA_LAN8650_DEVTYPE zzz
+#define OA_LAN8650_DEVTYPE 789
 
 #ifdef __cplusplus
 #define EXTERN extern "C"

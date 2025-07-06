@@ -111,6 +111,8 @@ ifeq ($(CONFIG_NET_IGC),y)
   CSRCS += igc.c
 endif
 
+include net/oa/Make.defs
+
 # Include network build support
 
 DEPPATH += --dep-path net

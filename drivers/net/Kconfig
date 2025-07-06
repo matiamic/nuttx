@@ -845,4 +845,6 @@ config NET_IGC_INT_INTERVAL
 
 endif # NET_IGC
 
+source "drivers/net/oa/Kconfig"
+
 endif # NETDEVICES

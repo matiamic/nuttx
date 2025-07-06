@@ -24,6 +24,10 @@
  * Included Files
  ****************************************************************************/
 
+#include <debug.h>
+
+#include <nuttx/kmalloc.h>
+
 #include "oa.h"
 
 /*****************************************************************************
@@ -35,46 +39,43 @@ struct oa_ncv7410_driver_s
   struct oa_driver_s oa_dev;
 
   int somethingmore;
-}
+};
 
 /*****************************************************************************
  * Private Functions
  ****************************************************************************/
 
-static int oa_ncv7410_config(struct oa_driver_s *dev)
+static int oa_ncv7410_action(struct oa_driver_s *dev, enum oa_action_e action)
 {
-  struct oa_ncv7410_driver_s *priv = (oa_ncv7410_driver_s *)dev;
+  struct oa_ncv7410_driver_s *priv = (struct oa_ncv7410_driver_s *)dev;
 
   /* do something */
-}
-
-static int oa_ncv7410_init_mac(struct oa_driver_s *dev)
-{
-  struct oa_ncv7410_driver_s *priv = (oa_ncv7410_driver_s *)dev;
-
-  /* do something */
+  return OK;
 }
 
 static int oa_ncv7410_add_mac(struct oa_driver_s *dev, uint8_t *mac)
 {
-  struct oa_ncv7410_driver_s *priv = (oa_ncv7410_driver_s *)dev;
+  struct oa_ncv7410_driver_s *priv = (struct oa_ncv7410_driver_s *)dev;
 
   /* do something */
+  return OK;
 }
 
 static int oa_ncv7410_rm_mac(struct oa_driver_s *dev, uint8_t *mac)
 {
-  struct oa_ncv7410_driver_s *priv = (oa_ncv7410_driver_s *)dev;
+  struct oa_ncv7410_driver_s *priv = (struct oa_ncv7410_driver_s *)dev;
 
   /* do something */
+  return OK;
 }
 
 static int oa_ncv7410_ioctl(struct oa_driver_s *dev, int cmd,
                             unsigned long arg)
 {
-  struct oa_ncv7410_driver_s *priv = (oa_ncv7410_driver_s *)dev;
+  struct oa_ncv7410_driver_s *priv = (struct oa_ncv7410_driver_s *)dev;
 
   /* do something */
+  return OK;
 }
 
 /*****************************************************************************
@@ -83,8 +84,7 @@ static int oa_ncv7410_ioctl(struct oa_driver_s *dev, int cmd,
 
 struct oa_ops_s g_oa_ncv7410_ops =
 {
-  oa_ncv7410_init_mac,
-  oa_ncv7410_config,
+  oa_ncv7410_action,
   oa_ncv7410_add_mac,
   oa_ncv7410_rm_mac,
   oa_ncv7410_ioctl
@@ -119,5 +119,5 @@ struct oa_driver_s *oa_ncv7410_initialize(struct spi_dev_s *spi,
 
   /* Return */
 
-  return priv->oa_dev;
+  return &priv->oa_dev;
 }
