@@ -111,7 +111,7 @@ ifeq ($(CONFIG_NET_IGC),y)
   CSRCS += igc.c
 endif
 
-include net/oa/Make.defs
+include net/oa_tc6/Make.defs
 
 # Include network build support
 

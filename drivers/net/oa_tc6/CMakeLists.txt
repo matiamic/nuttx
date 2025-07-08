@@ -20,19 +20,19 @@
 #
 # ##############################################################################
 
-if(CONFIG_NET_OA)
-  set(SRCS oa.c)
+if(CONFIG_NET_OA_TC6)
+  set(SRCS oa_tc6.c)
 
-  if(CONFIG_NET_OA_NCV7410)
-      list(APPEND SRCS oa_ncv7410.c)
+  if(CONFIG_NET_OA_TC6_NCV7410)
+      list(APPEND SRCS oa_tc6_ncv7410.c)
   endif()
 
-  if(CONFIG_NET_OA_NCN26010)
-      list(APPEND SRCS oa_ncn26010.c)
+  if(CONFIG_NET_OA_TC6_NCN26010)
+      list(APPEND SRCS oa_tc6_ncn26010.c)
   endif()
 
-  if(CONFIG_NET_OA_LAN8650)
-      list(APPEND SRCS oa_lan8650.c)
+  if(CONFIG_NET_OA_TC6_LAN8650)
+      list(APPEND SRCS oa_tc6_lan8650.c)
   endif()
 
   target_sources(drivers PRIVATE ${SRCS})

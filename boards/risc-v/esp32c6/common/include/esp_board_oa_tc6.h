@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/risc-v/esp32c6/common/include/esp_board_oa.h
+ * boards/risc-v/esp32c6/common/include/esp_board_oa_tc6.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,8 +20,8 @@
  *
  ****************************************************************************/
 
-#ifndef __BOARDS_RISCV_ESP32C6_COMMON_INCLUDE_ESP_BOARD_OA_H
-#define __BOARDS_RISCV_ESP32C6_COMMON_INCLUDE_ESP_BOARD_OA_H
+#ifndef __BOARDS_RISCV_ESP32C6_COMMON_INCLUDE_ESP_BOARD_OA_TC6_H
+#define __BOARDS_RISCV_ESP32C6_COMMON_INCLUDE_ESP_BOARD_OA_TC6_H
 
 /****************************************************************************
  * Included Files
@@ -49,10 +49,10 @@ extern "C"
  ****************************************************************************/
 
 /****************************************************************************
- * Name: board_oa_initialize
+ * Name: board_oa_tc6_initialize
  *
  * Description:
- *   Initialize and register the NCV7410 10BASE-T1S network driver.
+ *   Initialize and register the OA-TC6 10BASE-T1S network driver.
  *
  * Input Parameters:
  *   None
@@ -62,7 +62,7 @@ extern "C"
  *
  ****************************************************************************/
 
-int board_oa_initialize(void);
+int board_oa_tc6_initialize(void);
 
 #undef EXTERN
 #if defined(__cplusplus)
@@ -70,4 +70,4 @@ int board_oa_initialize(void);
 #endif
 
 #endif /* __ASSEMBLY__ */
-#endif /* __BOARDS_RISCV_ESP32C6_COMMON_INCLUDE_ESP_BOARD_OA_H */
+#endif /* __BOARDS_RISCV_ESP32C6_COMMON_INCLUDE_ESP_BOARD_OA_TC6_H */
