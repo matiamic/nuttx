@@ -1,5 +1,5 @@
 /****************************************************************************
- * drivers/net/oa/oa_ncn26010.h
+ * drivers/net/oa_tc6/oa_tc6_lan8650.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -28,15 +28,15 @@
 
 #include <nuttx/kmalloc.h>
 
-#include "oa.h"
+#include "oa_tc6.h"
 
 /*****************************************************************************
  * Private Types
  ****************************************************************************/
 
-struct oa_ncn26010_driver_s
+struct oa_tc6_lan8650_driver_s
 {
-  struct oa_driver_s oa_dev;
+  struct oa_tc6_driver_s oa_tc6_dev;
 
   int somethingmore;
 };
@@ -45,34 +45,35 @@ struct oa_ncn26010_driver_s
  * Private Functions
  ****************************************************************************/
 
-static int oa_ncn26010_action(struct oa_driver_s *dev, enum oa_action_e action)
+static int oa_tc6_lan8650_action(struct oa_tc6_driver_s *dev,
+                                 enum oa_tc6_action_e action)
 {
-  struct oa_ncn26010_driver_s *priv = (struct oa_ncn26010_driver_s *)dev;
+  struct oa_tc6_lan8650_driver_s *priv = (struct oa_tc6_lan8650_driver_s *)dev;
 
   /* do something */
   return OK;
 }
 
-static int oa_ncn26010_add_mac(struct oa_driver_s *dev, uint8_t *mac)
+static int oa_tc6_lan8650_add_mac(struct oa_tc6_driver_s *dev, uint8_t *mac)
 {
-  struct oa_ncn26010_driver_s *priv = (struct oa_ncn26010_driver_s *)dev;
+  struct oa_tc6_lan8650_driver_s *priv = (struct oa_tc6_lan8650_driver_s *)dev;
 
   /* do something */
   return OK;
 }
 
-static int oa_ncn26010_rm_mac(struct oa_driver_s *dev, uint8_t *mac)
+static int oa_tc6_lan8650_rm_mac(struct oa_tc6_driver_s *dev, uint8_t *mac)
 {
-  struct oa_ncn26010_driver_s *priv = (struct oa_ncn26010_driver_s *)dev;
+  struct oa_tc6_lan8650_driver_s *priv = (struct oa_tc6_lan8650_driver_s *)dev;
 
   /* do something */
   return OK;
 }
 
-static int oa_ncn26010_ioctl(struct oa_driver_s *dev, int cmd,
-                            unsigned long arg)
+static int oa_tc6_lan8650_ioctl(struct oa_tc6_driver_s *dev, int cmd,
+                                unsigned long arg)
 {
-  struct oa_ncn26010_driver_s *priv = (struct oa_ncn26010_driver_s *)dev;
+  struct oa_tc6_lan8650_driver_s *priv = (struct oa_tc6_lan8650_driver_s *)dev;
 
   /* do something */
   return OK;
@@ -82,42 +83,42 @@ static int oa_ncn26010_ioctl(struct oa_driver_s *dev, int cmd,
  * Private Data
  ****************************************************************************/
 
-static const struct oa_ops_s g_oa_ncn26010_ops =
+static struct oa_tc6_ops_s g_oa_tc6_lan8650_ops =
 {
-  oa_ncn26010_action,
-  oa_ncn26010_add_mac,
-  oa_ncn26010_rm_mac,
-  oa_ncn26010_ioctl
+  oa_tc6_lan8650_action,
+  oa_tc6_lan8650_add_mac,
+  oa_tc6_lan8650_rm_mac,
+  oa_tc6_lan8650_ioctl
 };
 
 /*****************************************************************************
  * Public Functions
  ****************************************************************************/
 
-struct oa_driver_s *oa_ncn26010_initialize(struct spi_dev_s *spi,
-                                          struct oa_config_s *config)
+struct oa_tc6_driver_s *oa_tc6_lan8650_initialize(struct spi_dev_s *spi,
+                                                  struct oa_tc6_config_s *config)
 {
-  FAR struct oa_ncn26010_driver_s *priv = NULL;
+  FAR struct oa_tc6_lan8650_driver_s *priv = NULL;
 
   priv = kmm_zalloc(sizeof(*priv));
   if (priv == NULL)
     {
-      nerr("Could not allocate data for oa_ncn26010_driver_s priv\n");
+      nerr("Could not allocate data for oa_tc6_lan8650_driver_s priv\n");
       return NULL;
     }
 
-  /* Assign spi and config only if needed by the lan8650 init code, in any case it will be reassigned later in oa_initialize */
+  /* Assign spi and config only if needed by the lan8650 init code, in any case it will be reassigned later in oa_tc6_initialize */
 
-  priv->oa_dev.spi = spi;
-  priv->oa_dev.config = config;
+  priv->oa_tc6_dev.spi = spi;
+  priv->oa_tc6_dev.config = config;
 
   /* Save the ops pointer */
 
-  priv->oa_dev.ops = &g_oa_ncn26010_ops;
+  priv->oa_tc6_dev.ops = &g_oa_tc6_lan8650_ops;
 
   /* Do something with additional structure fields or with the device */
 
   /* Return */
 
-  return &priv->oa_dev;
+  return &priv->oa_tc6_dev;
 }

@@ -1,5 +1,5 @@
 /****************************************************************************
- * include/nuttx/net/oa.h
+ * include/nuttx/net/oa_tc6.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,8 +20,8 @@
  *
  ****************************************************************************/
 
-#ifndef __INCLUDE_NUTTX_NET_OA_H
-#define __INCLUDE_NUTTX_NET_OA_H
+#ifndef __INCLUDE_NUTTX_NET_OA_TC6_H
+#define __INCLUDE_NUTTX_NET_OA_TC6_H
 
 /****************************************************************************
  * Included Files
@@ -42,15 +42,15 @@ extern "C"
  * Public Types
  ****************************************************************************/
 
-/* A reference to a structure of this type must be passed to the NCV7410
+/* A reference to a structure of this type must be passed to the OA-TC6
  * driver when the driver is instantiated. This structure provides
- * information about the configuration of the NCV7410.
+ * information about the configuration of the MAC-PHY.
  *
  * Memory for this structure is provided by the caller. It is not copied by
  * the driver and is presumed to persist while the driver is active.
  */
 
-struct oa_config_s
+struct oa_tc6_config_s
 {
   uint32_t id;
 
@@ -59,9 +59,9 @@ struct oa_config_s
 
   int interrupt_pin;
 
-  CODE int  (*attach)(FAR struct oa_config_s *config, xcpt_t handler,
+  CODE int  (*attach)(FAR struct oa_tc6_config_s *config, xcpt_t handler,
                       FAR void *arg);
-  CODE void (*enable)(FAR struct oa_config_s *config, bool enable);
+  CODE void (*enable)(FAR struct oa_tc6_config_s *config, bool enable);
 };
 
 /****************************************************************************
@@ -84,12 +84,12 @@ struct oa_config_s
  ****************************************************************************/
 
 struct spi_dev_s; /* forward declaration, see nuttx/spi/spi.h */
-int oa_initialize(FAR struct spi_dev_s *spi,
-                  struct oa_config_s *config);
+int oa_tc6_initialize(FAR struct spi_dev_s *spi,
+                      struct oa_tc6_config_s *config);
 
 #undef EXTERN
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __INCLUDE_NUTTX_NET_OA_H */
+#endif /* __INCLUDE_NUTTX_NET_OA_TC6_H */

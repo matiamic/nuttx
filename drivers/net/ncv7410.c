@@ -1157,7 +1157,7 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
 
 #endif
 
-  /* enable rx buffer overflow interrupt */
+  /* enable RX buffer overflow interrupt */
 
   regval = OA_IMSK0_DEF & ~(1 << OA_IMSK0_RXBOEM_POS);
 
