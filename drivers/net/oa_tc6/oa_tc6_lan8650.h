@@ -1,5 +1,5 @@
 /****************************************************************************
- * drivers/net/oa/oa_lan8650.h
+ * drivers/net/oa_tc6/oa_tc6_lan8650.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,20 +20,20 @@
  *
  ****************************************************************************/
 
-#ifndef __DRIVERS_NET_OA_NCV7410_H
-#define __DRIVERS_NET_OA_NCV7410_H
+#ifndef __DRIVERS_NET_OA_TC6_LAN8650_H
+#define __DRIVERS_NET_OA_TC6_LAN8650_H
 
 /*****************************************************************************
  * Included Files
  ****************************************************************************/
 
-#include "oa.h"
+#include "oa_tc6.h"
 
 /*****************************************************************************
  * Preprocessor Macros
  ****************************************************************************/
 
-#define OA_NCV7410_DEVTYPE 0x180FF5A1U
+#define OA_TC6_LAN8650_DEVTYPE 789
 
 #ifdef __cplusplus
 #define EXTERN extern "C"
@@ -47,12 +47,12 @@ extern "C"
  * Public Function Prototypes
  ****************************************************************************/
 
-struct oa_driver_s *oa_ncv7410_initialize(struct spi_dev_s *spi,
-                                          struct oa_config_s *config);
+struct oa_tc6_driver_s *oa_tc6_lan8650_initialize(struct spi_dev_s *spi,
+                                                  struct oa_tc6_config_s *config);
 
 #undef EXTERN
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __DRIVERS_NET_OA_NCV7410_H */
+#endif /* __DRIVERS_NET_OA_TC6_LAN8650_H */

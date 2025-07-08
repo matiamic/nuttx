@@ -20,24 +20,24 @@
 #
 ############################################################################
 
-ifeq ($(CONFIG_NET_OA),y)
+ifeq ($(CONFIG_NET_OA_TC6),y)
 
-CSRCS += oa.c
+CSRCS += oa_tc6.c
 
-ifeq ($(CONFIG_NET_OA_NCV7410),y)
-CSRCS += oa_ncv7410.c
+ifeq ($(CONFIG_NET_OA_TC6_NCV7410),y)
+CSRCS += oa_tc6_ncv7410.c
 endif
 
-ifeq ($(CONFIG_NET_OA_NCN26010),y)
-CSRCS += oa_ncn26010.c
+ifeq ($(CONFIG_NET_OA_TC6_NCN26010),y)
+CSRCS += oa_tc6_ncn26010.c
 endif
 
-ifeq ($(CONFIG_NET_OA_LAN8650),y)
-CSRCS += oa_lan8650.c
+ifeq ($(CONFIG_NET_OA_TC6_LAN8650),y)
+CSRCS += oa_tc6_lan8650.c
 endif
 
-DEPPATH += --dep-path net/oa
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)drivers$(DELIM)net$(DELIM)oa
-VPATH += :net/oa
+DEPPATH += --dep-path net/oa_tc6
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)drivers$(DELIM)net$(DELIM)oa_tc6
+VPATH += :net/oa_tc6
 
 endif

@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/risc-v/esp32c6/common/src/esp_board_oa.c
+ * boards/risc-v/esp32c6/common/src/esp_board_oa_tc6.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -33,7 +33,7 @@
 
 #include <nuttx/spi/spi.h>
 #include <nuttx/irq.h>
-#include <nuttx/net/oa.h>
+#include <nuttx/net/oa_tc6.h>
 
 #include <arch/board/board.h>
 
@@ -44,38 +44,41 @@
  * Private Function Prototypes
  ****************************************************************************/
 
-static int esp_board_oa_attach(FAR struct oa_config_s *config,
-                               xcpt_t handler,
-                               FAR void *arg);
+static int esp_board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
+                                   xcpt_t handler,
+                                   FAR void *arg);
 
-static void esp_board_oa_enable(FAR struct oa_config_s *config, bool enable);
+static int esp_board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
+                                   bool enable);
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
 
-static struct oa_config_s g_esp_oa_config =
+static struct oa_tc6_config_s g_esp_oa_tc6_config =
 {
   .id            = SPIDEV_ETHERNET(0),
   .frequency     = 20000000,
   .chunk_size    = 64,
   .interrupt_pin = 5,
-  .attach        = esp_board_oa_attach,
-  .enable        = esp_board_oa_enable,
+  .attach        = esp_board_oa_tc6_attach,
+  .enable        = esp_board_oa_tc6_enable,
 };
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
 
-static int esp_board_oa_attach(FAR struct oa_config_s *config,
-                               xcpt_t handler, FAR void *arg)
+static int esp_board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
+                                   xcpt_t handler, FAR void *arg)
 {
   esp_configgpio(config->interrupt_pin, INPUT_FUNCTION_2 | PULLUP);
   irq_attach(ESP_PIN2IRQ(config->interrupt_pin), handler, arg);
+
+  return OK;
 }
 
-static void esp_board_oa_enable(FAR struct oa_config_s *config, bool enable)
+static int esp_board_oa_tc6_enable(FAR struct oa_tc6_config_s *config, bool enable)
 {
   if (enable)
     {
@@ -85,6 +88,8 @@ static void esp_board_oa_enable(FAR struct oa_config_s *config, bool enable)
     {
       esp_gpioirqdisable(ESP_PIN2IRQ(config->interrupt_pin));
     }
+
+  return OK;
 }
 
 /****************************************************************************
@@ -92,10 +97,10 @@ static void esp_board_oa_enable(FAR struct oa_config_s *config, bool enable)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: board_oa_initialize
+ * Name: board_oa_tc6_initialize
  *
  * Description:
- *   Initialize and register the OA 10BASE-T1S network driver.
+ *   Initialize and register the OA-TC6 10BASE-T1S network driver.
  *
  * Input Parameters:
  *   None
@@ -105,7 +110,7 @@ static void esp_board_oa_enable(FAR struct oa_config_s *config, bool enable)
  *
  ****************************************************************************/
 
-void board_oa_initialize(void)
+void board_oa_tc6_initialize(void)
 {
   struct spi_dev_s *spi;
   int ret;
@@ -120,7 +125,7 @@ void board_oa_initialize(void)
 
   /* Bind the SPI port and config to the OA driver */
 
-  ret = oa_initialize(spi, &g_esp_oa_config);
+  ret = oa_tc6_initialize(spi, &g_esp_oa_tc6_config);
   if (ret < 0)
     {
       syslog(LOG_ERR,

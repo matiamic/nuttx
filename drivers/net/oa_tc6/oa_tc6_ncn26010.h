@@ -1,5 +1,5 @@
 /****************************************************************************
- * drivers/net/oa/oa_ncn26010.h
+ * drivers/net/oa_tc6/oa_tc6_ncn26010.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,20 +20,20 @@
  *
  ****************************************************************************/
 
-#ifndef __DRIVERS_NET_OA_NCN26010_H
-#define __DRIVERS_NET_OA_NCN26010_H
+#ifndef __DRIVERS_NET_OA_TC6_NCN26010_H
+#define __DRIVERS_NET_OA_TC6_NCN26010_H
 
 /*****************************************************************************
  * Included Files
  ****************************************************************************/
 
-#include "oa.h"
+#include "oa_tc6.h"
 
 /*****************************************************************************
  * Preprocessor Macros
  ****************************************************************************/
 
-#define OA_NCN26010_DEVTYPE 456
+#define OA_TC6_NCN26010_DEVTYPE 456
 
 #ifdef __cplusplus
 #define EXTERN extern "C"
@@ -47,12 +47,12 @@ extern "C"
  * Public Function Prototypes
  ****************************************************************************/
 
-struct oa_driver_s *oa_ncn26010_initialize(struct spi_dev_s *spi,
-                                           struct oa_config_s *config);
+struct oa_tc6_driver_s *oa_tc6_ncn26010_initialize(struct spi_dev_s *spi,
+                                                   struct oa_tc6_config_s *config);
 
 #undef EXTERN
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* __DRIVERS_NET_OA_NCN26010_H */
+#endif /* __DRIVERS_NET_OA_TC6_NCN26010_H */

@@ -1,0 +1,344 @@
+/****************************************************************************
+ * drivers/net/oa_tc6/oa_tc6.h
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.  The
+ * ASF licenses this file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ ****************************************************************************/
+
+#ifndef __DRIVERS_NET_OA_TC6_H
+#define __DRIVERS_NET_OA_TC6_H
+
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#include <nuttx/spi/spi.h>
+#include <sys/endian.h>
+
+#include <nuttx/wqueue.h>
+#include <nuttx/mutex.h>
+
+#include <nuttx/net/netdev_lowerhalf.h>
+
+#include <nuttx/bits.h>
+#include <stdint.h>
+
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+/* NuttX SPI mode number for SPI config as defined in OPEN Alliance TC6 */
+
+#define OA_TC6_SPI_MODE 0
+
+/* Number of bits in a SPI word */
+
+#define OA_TC6_SPI_NBITS 8
+
+#define OA_TC6_CHUNK_MAX_PAYLOAD_SIZE 64
+#define OA_TC6_CHUNK_DEFAULT_SIZE (OA_TC6_CHUNK_MAX_PAYLOAD_SIZE + 4)
+
+typedef uint32_t oa_tc6_regid_t;
+
+#define OA_TC6_MAKE_REGID(mms, addr) \
+    (((uint32_t)(mms) << 16) | ((uint32_t)(addr) & 0xFFFF))
+
+#define OA_TC6_REGID_GET_MMS(regid) ((uint8_t)((regid >> 16) & 0xF))
+#define OA_TC6_REGID_GET_ADDR(regid) ((uint16_t)(regid & 0xFFFF))
+
+#define OA_TC6_IDVER_MMS              0
+#define OA_TC6_IDVER_ADDR             0x0U
+#define OA_TC6_IDVER_REGID            OA_TC6_MAKE_REGID(OA_TC6_IDVER_MMS, OA_TC6_IDVER_ADDR)
+
+#define OA_TC6_PHYID_MMS              0
+#define OA_TC6_PHYID_ADDR             0x1U
+#define OA_TC6_PHYID_REGID            OA_TC6_MAKE_REGID(OA_TC6_PHYID_MMS, OA_TC6_PHYID_ADDR)
+#define OA_TC6_PHYID_OUI_MASK         GENMASK(31, 10)
+#define OA_TC6_PHYID_OUI_POS          10
+#define OA_TC6_PHYID_MODEL_MASK       GENMASK(9, 4)
+#define OA_TC6_PHYID_MODEL_POS        4
+#define OA_TC6_PHYID_REV_MASK         GENMASK(3, 0)
+#define OA_TC6_PHYID_REV_POS          0
+
+#define OA_TC6_STDCAP_MMS             0
+#define OA_TC6_STDCAP_ADDR            0x2U
+#define OA_TC6_STDCAP_REGID           OA_TC6_MAKE_REGID(OA_TC6_STDCAP_MMS, OA_TC6_STDCAP_ADDR)
+
+#define OA_TC6_RESET_MMS              0
+#define OA_TC6_RESET_ADDR             0x3U
+#define OA_TC6_RESET_REGID            OA_TC6_MAKE_REGID(OA_TC6_RESET_MMS, OA_TC6_RESET_ADDR)
+#define OA_TC6_RESET_SWRESET_MASK     BIT(0)
+#define OA_TC6_RESET_SWRESET_POS      0
+
+#define OA_TC6_CONFIG0_MMS            0
+#define OA_TC6_CONFIG0_ADDR           0x4U
+#define OA_TC6_CONFIG0_REGID          OA_TC6_MAKE_REGID(OA_TC6_CONFIG0_MMS, OA_TC6_CONFIG0_ADDR)
+#define OA_TC6_CONFIG0_SYNC_MASK      BIT(15)
+#define OA_TC6_CONFIG0_SYNC_POS       15
+#define OA_TC6_CONFIG0_TXFCSVE_MASK   BIT(14)
+#define OA_TC6_CONFIG0_TXFCSVE_POS    14
+#define OA_TC6_CONFIG0_CSARFE_MASK    BIT(13)
+#define OA_TC6_CONFIG0_CSARFE_POS     13
+#define OA_TC6_CONFIG0_ZARFE_MASK     BIT(12)
+#define OA_TC6_CONFIG0_ZARFE_POS      12
+#define OA_TC6_CONFIG0_TXCTHRESH_MASK GENMASK(11, 10)
+#define OA_TC6_CONFIG0_TXCTHRESH_POS  10
+#define OA_TC6_CONFIG0_TXCTE_MASK     BIT(9)
+#define OA_TC6_CONFIG0_TXCTE_POS      9
+#define OA_TC6_CONFIG0_RXCTE_MASK     BIT(8)
+#define OA_TC6_CONFIG0_RXCTE_POS      8
+#define OA_TC6_CONFIG0_FTSE_MASK      BIT(7)
+#define OA_TC6_CONFIG0_FTSE_POS       7
+#define OA_TC6_CONFIG0_FTSS_MASK      BIT(6)
+#define OA_TC6_CONFIG0_FTSS_POS       6
+#define OA_TC6_CONFIG0_PROTE_MASK     BIT(5)
+#define OA_TC6_CONFIG0_PROTE_POS      5
+#define OA_TC6_CONFIG0_SEQE_MASK      BIT(4)
+#define OA_TC6_CONFIG0_SEQE_POS       4
+#define OA_TC6_CONFIG0_CPS_MASK       GENMASK(2, 0)
+#define OA_TC6_CONFIG0_CPS_POS        0
+#define OA_TC6_CONFIG0_CPS_64         6
+#define OA_TC6_CONFIG0_CPS_32         5
+#define OA_TC6_CONFIG0_CPS_16         4
+#define OA_TC6_CONFIG0_CPS_8          3
+
+#define OA_TC6_STATUS0_MMS            0
+#define OA_TC6_STATUS0_ADDR           0x8U
+#define OA_TC6_STATUS0_REGID          OA_TC6_MAKE_REGID(OA_TC6_STATUS0_MMS, OA_TC6_STATUS0_ADDR)
+#define OA_TC6_STATUS0_RESETC_MASK    BIT(6)
+#define OA_TC6_STATUS0_RESETC_POS     6
+#define OA_TC6_STATUS0_HDRE_MASK      BIT(5)
+#define OA_TC6_STATUS0_HDRE_POS       5
+
+#define OA_TC6_BUFSTS_MMS             0
+#define OA_TC6_BUFSTS_ADDR            0xBU
+#define OA_TC6_BUFSTS_REGID           OA_TC6_MAKE_REGID(OA_TC6_BUFSTS_MMS, OA_TC6_BUFSTS_ADDR)
+
+#define OA_TC6_IMSK0_MMS              0
+#define OA_TC6_IMSK0_ADDR             0xCU
+#define OA_TC6_IMSK0_REGID            OA_TC6_MAKE_REGID(OA_TC6_IMSK0_MMS, OA_TC6_IMSK0_ADDR)
+#define OA_TC6_IMSK0_DEF              0x1FBFU
+#define OA_TC6_IMSK0_PHYINTM_MASK     BIT(7)
+#define OA_TC6_IMSK0_PHYINTM_POS      7
+#define OA_TC6_IMSK0_RXBOEM_MASK      BIT(3)
+#define OA_TC6_IMSK0_RXBOEM_POS       3
+
+#define OA_TC6_PHY_CONTROL_MMS        0
+#define OA_TC6_PHY_CONTROL_ADDR       0xFF00U
+#define OA_TC6_PHY_CONTROL_REGID      OA_TC6_MAKE_REGID(OA_TC6_PHY_CONTROL_MMS, OA_TC6_PHY_CONTROL_ADDR)
+#define OA_TC6_PHY_CONTROL_LCTL_POS   12
+
+#define OA_TC6_PHY_STATUS_MMS         0
+#define OA_TC6_PHY_STATUS_ADDR        0xFF01U
+#define OA_TC6_PHY_STATUS_REGID       OA_TC6_MAKE_REGID(OA_TC6_PHY_STATUS_MMS, OA_TC6_PHY_STATUS_ADDR)
+
+/* OA Data Transaction and Control Transaction protocols bitfields */
+
+/* Common bitfields */
+
+#define OA_TC6_DNC_MASK  BIT(31)
+#define OA_TC6_DNC_POS   31
+
+#define OA_TC6_HDRB_MASK BIT(30)
+#define OA_TC6_HDRB_POS  30
+
+#define OA_TC6_VS_MASK   GENMASK(23, 22)
+#define OA_TC6_VS_POS    22
+
+#define OA_TC6_DV_MASK   BIT(21)
+#define OA_TC6_DV_POS    21
+
+#define OA_TC6_SV_MASK   BIT(20)
+#define OA_TC6_SV_POS    20
+
+#define OA_TC6_SWO_MASK  GENMASK(19, 16)
+#define OA_TC6_SWO_POS   16
+
+#define OA_TC6_EV_MASK   BIT(14)
+#define OA_TC6_EV_POS    14
+
+#define OA_TC6_EBO_MASK  GENMASK(13, 8)
+#define OA_TC6_EBO_POS   8
+
+#define OA_TC6_P_MASK    BIT(0)
+#define OA_TC6_P_POS     0
+
+/* Control Transaction Protocol header bitfields */
+
+#define OA_TC6_WNR_MASK  BIT(29)
+#define OA_TC6_WNR_POS   29
+
+#define OA_TC6_AID_MASK  BIT(28)
+#define OA_TC6_AID_POS   28
+
+#define OA_TC6_MMS_MASK  GENMASK(27, 24)
+#define OA_TC6_MMS_POS   24
+
+#define OA_TC6_ADDR_MASK GENMASK(23, 8)
+#define OA_TC6_ADDR_POS  8
+
+#define OA_TC6_LEN_MASK  GENMASK(7, 1)
+#define OA_TC6_LEN_POS   1
+
+/* Transmit data header bitfields */
+
+#define OA_TC6_SEQ_MASK  BIT(30)
+#define OA_TC6_SEQ_POS   30
+
+#define OA_TC6_NORX_MASK BIT(29)
+#define OA_TC6_NORX_POS  29
+
+#define OA_TC6_TSC_MASK  GENMASK(7, 6)
+#define OA_TC6_TSC_POS   6
+
+/* Receive data footer bitfields */
+
+#define OA_TC6_EXST_MASK BIT(31)
+#define OA_TC6_EXST_POS  31
+
+#define OA_TC6_SYNC_MASK BIT(29)
+#define OA_TC6_SYNC_POS  29
+
+#define OA_TC6_RCA_MASK  GENMASK(28, 24)
+#define OA_TC6_RCA_POS   24
+
+#define OA_TC6_FD_MASK   BIT(15)
+#define OA_TC6_FD_POS    15
+
+#define OA_TC6_RTSA_MASK BIT(7)
+#define OA_TC6_RTSA_POS  7
+
+#define OA_TC6_RTSP_MASK BIT(6)
+#define OA_TC6_RTSP_POS  6
+
+#define OA_TC6_TXC_MASK  GENMASK(5, 1)
+#define OA_TC6_TXC_POS   1
+
+/* General macro for extracting fileds from OA registers */
+
+#define oa_tc6_get_field(r, fieldname) \
+    ((int) ((r & OA_TC6_##fieldname##_MASK) >> OA_TC6_##fieldname##_POS))
+
+/* Helper macros for extracting control fields from footers/headers */
+
+#define oa_tc6_tx_credits(f)                oa_tc6_get_field(f, TXC)
+#define oa_tc6_rx_available(f)              oa_tc6_get_field(f, RCA)
+#define oa_tc6_header_bad(f)                oa_tc6_get_field(f, HDRB)
+#define oa_tc6_ext_status(f)                oa_tc6_get_field(f, EXST)
+#define oa_tc6_data_valid(f)                oa_tc6_get_field(f, DV)
+#define oa_tc6_start_valid(f)               oa_tc6_get_field(f, SV)
+#define oa_tc6_start_word_offset(f)         oa_tc6_get_field(f, SWO)
+#define oa_tc6_end_valid(f)                 oa_tc6_get_field(f, EV)
+#define oa_tc6_end_byte_offset(f)           oa_tc6_get_field(f, EBO)
+#define oa_tc6_frame_drop(f)                oa_tc6_get_field(f, FD)
+#define oa_tc6_rx_frame_timestamp_added(f)  oa_tc6_get_field(f, RTSA)
+#define oa_tc6_rx_frame_timestamp_parity(f) oa_tc6_get_field(f, RTSP)
+#define oa_tc6_mac_phy_sync(f)              oa_tc6_get_field(f, SYNC)
+
+/****************************************************************************
+ * Public Types
+ ****************************************************************************/
+
+enum oa_tc6_ifstate_e
+{
+  OA_TC6_IFSTATE_RESET,
+  OA_TC6_IFSTATE_INIT_DOWN,
+  OA_TC6_IFSTATE_INIT_UP,
+};
+
+enum oa_tc6_action_e
+{
+  OA_TC6_ACTION_CONFIG,   /* Called before OA generic config         */
+  OA_TC6_ACTION_INIT_MAC, /* Signal lower to initialize MAC address  */
+  OA_TC6_ACTION_IFUP,     /* Called after the interface is enabled   */
+  OA_TC6_ACTOIN_IFDOWN,   /* Called before the interface is disabled */
+  OA_TC6_ACTION_EXST,     /* Called when EXST is detected in footer  */
+  OA_TC6_ACTION_N         /* Number of diferrent OA actions          */
+};
+
+struct oa_tc6_driver_s;
+struct oa_tc6_ops_s
+{
+  CODE int (*action)(struct oa_tc6_driver_s *, enum oa_tc6_action_e);
+  CODE int (*add_mac)(struct oa_tc6_driver_s *, uint8_t *mac);
+  CODE int (*rm_mac)(struct oa_tc6_driver_s *, uint8_t *mac);
+  CODE int (*ioctl)(struct oa_tc6_driver_s *, int cmd, unsigned long arg);
+};
+
+struct oa_tc6_driver_s
+{
+  struct netdev_lowerhalf_s dev;   /* Driver data visible by the net stack
+                                    * (must be placed first)               */
+  mutex_t lock;                    /* Lock for data race prevention        */
+  FAR struct spi_dev_s *spi;       /* The SPI device instance              */
+  int irqnum;                      /* irq number of the interrupt pin      */
+  struct oa_tc6_config_s *config;  /* Driver configuration                 */
+  enum oa_tc6_ifstate_e ifstate;   /* Driver state                         */
+
+  struct work_s interrupt_work;    /* wq handle for the interrupt work     */
+  struct work_s io_work;           /* wq handle for the io work            */
+
+  int txc;                         /* TX credits                           */
+  int rca;                         /* RX chunks available                  */
+
+  FAR netpkt_t *tx_pkt;            /* Pointer to the TX netpacket          */
+  FAR netpkt_t *rx_pkt;            /* Pointer to the RX netpacket          */
+  int tx_pkt_idx;                  /* Position in the TX netpacket         */
+  int rx_pkt_idx;                  /* Position in the RX netpacket         */
+  int tx_pkt_len;                  /* Length of the TX packet              */
+  bool rx_pkt_ready;               /* RX packet ready to be received flag  */
+
+  struct oa_tc6_ops_s *ops;        /* MAC-PHY device-specific hooks        */
+};
+
+#ifdef __cplusplus
+#define EXTERN extern "C"
+extern "C"
+{
+#else
+#define EXTERN extern
+#endif
+
+/****************************************************************************
+ * Public Function Prototypes
+ ****************************************************************************/
+
+int oa_tc6_write_reg(FAR struct oa_tc6_driver_s *priv,
+                 oa_tc6_regid_t regid, uint32_t word);
+
+int oa_tc6_read_reg(FAR struct oa_tc6_driver_s *priv,
+                oa_tc6_regid_t regid, FAR uint32_t *word);
+
+int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
+                      oa_tc6_regid_t regid,
+                      uint32_t setbits, uint32_t clearbits);
+
+int oa_tc6_store_mac(FAR struct oa_tc6_driver_s *priv, uint8_t *mac);
+
+uint8_t oa_tc6_bitrev8(uint8_t byte);
+
+
+#undef EXTERN
+#ifdef __cplusplus
+}
+#endif
+
+#endif/* __DRIVERS_NET_OA_TC6_H */
