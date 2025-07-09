@@ -53,7 +53,7 @@ static int oa_tc6_ncn26010_action(struct oa_tc6_driver_s *dev, enum oa_tc6_actio
   return OK;
 }
 
-static int oa_tc6_ncn26010_add_mac(struct oa_tc6_driver_s *dev, uint8_t *mac)
+static int oa_tc6_ncn26010_addmac(struct oa_tc6_driver_s *dev, uint8_t *mac)
 {
   struct oa_tc6_ncn26010_driver_s *priv = (struct oa_tc6_ncn26010_driver_s *)dev;
 
@@ -61,7 +61,7 @@ static int oa_tc6_ncn26010_add_mac(struct oa_tc6_driver_s *dev, uint8_t *mac)
   return OK;
 }
 
-static int oa_tc6_ncn26010_rm_mac(struct oa_tc6_driver_s *dev, uint8_t *mac)
+static int oa_tc6_ncn26010_rmmac(struct oa_tc6_driver_s *dev, uint8_t *mac)
 {
   struct oa_tc6_ncn26010_driver_s *priv = (struct oa_tc6_ncn26010_driver_s *)dev;
 
@@ -85,8 +85,8 @@ static int oa_tc6_ncn26010_ioctl(struct oa_tc6_driver_s *dev, int cmd,
 static struct oa_tc6_ops_s g_oa_tc6_ncn26010_ops =
 {
   oa_tc6_ncn26010_action,
-  oa_tc6_ncn26010_add_mac,
-  oa_tc6_ncn26010_rm_mac,
+  oa_tc6_ncn26010_addmac,
+  oa_tc6_ncn26010_rmmac,
   oa_tc6_ncn26010_ioctl
 };
 
