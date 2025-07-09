@@ -54,7 +54,7 @@
 #define OA_TC6_SPI_NBITS 8
 
 #define OA_TC6_CHUNK_MAX_PAYLOAD_SIZE 64
-#define OA_TC6_CHUNK_DEFAULT_SIZE (OA_TC6_CHUNK_MAX_PAYLOAD_SIZE + 4)
+#define OA_TC6_CHUNK_MAX_SIZE (OA_TC6_CHUNK_MAX_PAYLOAD_SIZE + 4)
 
 typedef uint32_t oa_tc6_regid_t;
 
@@ -266,12 +266,12 @@ enum oa_tc6_ifstate_e
 
 enum oa_tc6_action_e
 {
-  OA_TC6_ACTION_CONFIG,   /* Called before OA generic config         */
-  OA_TC6_ACTION_INIT_MAC, /* Signal lower to initialize MAC address  */
-  OA_TC6_ACTION_IFUP,     /* Called after the interface is enabled   */
-  OA_TC6_ACTOIN_IFDOWN,   /* Called before the interface is disabled */
-  OA_TC6_ACTION_EXST,     /* Called when EXST is detected in footer  */
-  OA_TC6_ACTION_N         /* Number of diferrent OA actions          */
+  OA_TC6_ACTION_CONFIG,        /* Called before OA generic config         */
+  OA_TC6_ACTION_INIT_MAC_ADDR, /* Signal lower to initialize MAC address  */
+  OA_TC6_ACTION_IFUP,          /* Called after the interface is enabled   */
+  OA_TC6_ACTION_IFDOWN,        /* Called before the interface is disabled */
+  OA_TC6_ACTION_EXST,          /* Called when EXST is detected in footer  */
+  OA_TC6_ACTION_N              /* Number of diferrent OA actions          */
 };
 
 struct oa_tc6_driver_s;
@@ -322,16 +322,17 @@ extern "C"
  ****************************************************************************/
 
 int oa_tc6_write_reg(FAR struct oa_tc6_driver_s *priv,
-                 oa_tc6_regid_t regid, uint32_t word);
+                     oa_tc6_regid_t regid, uint32_t word);
 
 int oa_tc6_read_reg(FAR struct oa_tc6_driver_s *priv,
-                oa_tc6_regid_t regid, FAR uint32_t *word);
+                    oa_tc6_regid_t regid, FAR uint32_t *word);
 
 int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
-                      oa_tc6_regid_t regid,
-                      uint32_t setbits, uint32_t clearbits);
+                          oa_tc6_regid_t regid,
+                          uint32_t setbits, uint32_t clearbits);
 
-int oa_tc6_store_mac(FAR struct oa_tc6_driver_s *priv, uint8_t *mac);
+void oa_tc6_store_mac_addr(FAR struct oa_tc6_driver_s *priv,
+                           uint8_t *mac);
 
 uint8_t oa_tc6_bitrev8(uint8_t byte);
 
