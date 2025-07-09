@@ -112,7 +112,7 @@ static int esp_board_oa_tc6_enable(FAR struct oa_tc6_config_s *config, bool enab
 
 void board_oa_tc6_initialize(void)
 {
-  struct spi_dev_s *spi;
+  FAR struct spi_dev_s *spi;
   int ret;
 
   spi = esp_spibus_initialize(ESPRESSIF_SPI2);

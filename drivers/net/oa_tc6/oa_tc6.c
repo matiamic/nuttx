@@ -98,7 +98,7 @@ static int oa_tc6_poll_footer(FAR struct oa_tc6_driver_s *priv,
 
 static int oa_tc6_exchange_chunk(FAR struct oa_tc6_driver_s *priv,
                                  FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
-                                 uint32_t header, uint32_t *footer);
+                                 uint32_t header, FAR uint32_t *footer);
 
 /* Interrupt handling */
 
@@ -697,7 +697,7 @@ static inline void oa_tc6_deselect_spi(FAR struct oa_tc6_driver_s *priv)
 
 static int oa_tc6_exchange_chunk(FAR struct oa_tc6_driver_s *priv,
                                  FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
-                                 uint32_t header, uint32_t *footer)
+                                 uint32_t header, FAR uint32_t *footer)
 {
   header |= (1 << OA_TC6_DNC_POS);
   header |= (!oa_tc6_get_parity(header) << OA_TC6_P_POS);
@@ -746,7 +746,7 @@ static int oa_tc6_exchange_chunk(FAR struct oa_tc6_driver_s *priv,
  ****************************************************************************/
 
 static int oa_tc6_poll_footer(FAR struct oa_tc6_driver_s *priv,
-                           FAR uint32_t *footer)
+                              FAR uint32_t *footer)
 {
   uint8_t txdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
   uint8_t rxdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
@@ -1208,7 +1208,7 @@ static int oa_tc6_ifdown(FAR struct netdev_lowerhalf_s *dev)
  ****************************************************************************/
 
 static int oa_tc6_transmit(FAR struct netdev_lowerhalf_s *dev,
-                            FAR netpkt_t *pkt)
+                           FAR netpkt_t *pkt)
 {
   FAR struct oa_tc6_driver_s *priv = (FAR struct oa_tc6_driver_s *)dev;
 
@@ -1259,7 +1259,7 @@ static FAR netpkt_t *oa_tc6_receive(FAR struct netdev_lowerhalf_s *dev)
     {
       ninfo("Info: Received RX packet %d bytes long\n",
             netpkt_getdatalen(&priv->dev, priv->rx_pkt));
-      netpkt_t *retval = priv->rx_pkt;
+      FAR netpkt_t *retval = priv->rx_pkt;
       priv->rx_pkt_ready = false;
       priv->rx_pkt = NULL;
       nxmutex_unlock(&priv->lock);
