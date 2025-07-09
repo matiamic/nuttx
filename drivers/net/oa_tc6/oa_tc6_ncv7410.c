@@ -122,9 +122,9 @@ static int oa_tc6_ncv7410_init_mac_addr(FAR struct oa_tc6_ncv7410_driver_s *priv
   return OK;
 }
 
-static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv)
+static int oa_tc6_ncv7410_config(FAR struct oa_tc6_ncv7410_driver_s *priv)
 {
-  struct oa_tc6_driver_s *dev = (struct oa_tc6_driver_s *)priv;
+  FAR struct oa_tc6_driver_s *dev = (FAR struct oa_tc6_driver_s *)priv;
 
   uint32_t regval;
 
@@ -164,10 +164,10 @@ static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv)
   return OK;
 }
 
-static int oa_tc6_ncv7410_action(struct oa_tc6_driver_s *dev,
+static int oa_tc6_ncv7410_action(FAR struct oa_tc6_driver_s *dev,
                                  enum oa_tc6_action_e action)
 {
-  struct oa_tc6_ncv7410_driver_s *priv = (struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
 
   switch (action)
     {
@@ -277,7 +277,7 @@ static int oa_tc6_ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
 }
 
 #ifdef CONFIG_NET_MCASTGROUP
-static int oa_tc6_ncv7410_rmmac(struct oa_tc6_driver_s *dev,
+static int oa_tc6_ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
                                 FAR const uint8_t *mac)
 {
   FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
@@ -350,8 +350,8 @@ static struct oa_tc6_ops_s g_oa_tc6_ncv7410_ops =
  * Public Functions
  ****************************************************************************/
 
-struct oa_tc6_driver_s *oa_tc6_ncv7410_initialize(struct spi_dev_s *spi,
-                                                  struct oa_tc6_config_s *config)
+FAR struct oa_tc6_driver_s *oa_tc6_ncv7410_initialize(FAR struct spi_dev_s *spi,
+                                                      FAR struct oa_tc6_config_s *config)
 {
   FAR struct oa_tc6_ncv7410_driver_s *priv = NULL;
 
