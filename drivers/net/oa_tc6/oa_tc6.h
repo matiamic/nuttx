@@ -277,10 +277,20 @@ enum oa_tc6_action_e
 struct oa_tc6_driver_s;
 struct oa_tc6_ops_s
 {
-  CODE int (*action)(struct oa_tc6_driver_s *, enum oa_tc6_action_e);
-  CODE int (*add_mac)(struct oa_tc6_driver_s *, uint8_t *mac);
-  CODE int (*rm_mac)(struct oa_tc6_driver_s *, uint8_t *mac);
-  CODE int (*ioctl)(struct oa_tc6_driver_s *, int cmd, unsigned long arg);
+  CODE int (*action)(FAR struct oa_tc6_driver_s *, enum oa_tc6_action_e);
+
+  /* addmac is used for initializing the MAC filter with the default
+   * MAC address, therefore it is needed even when CONFIG_NET_MCASTGROUP
+   * is not set
+   */
+
+  CODE int (*addmac)(FAR struct oa_tc6_driver_s *, FAR const uint8_t *mac);
+#ifdef CONFIG_NET_MCASTGROUP
+  CODE int (*rmmac)(FAR struct oa_tc6_driver_s *, FAR const uint8_t *mac);
+#endif
+#ifdef CONFIG_NETDEV_IOCTL
+  CODE int (*ioctl)(FAR struct oa_tc6_driver_s *, int cmd, unsigned long arg);
+#endif
 };
 
 struct oa_tc6_driver_s
@@ -332,7 +342,7 @@ int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
                           uint32_t setbits, uint32_t clearbits);
 
 void oa_tc6_store_mac_addr(FAR struct oa_tc6_driver_s *priv,
-                           uint8_t *mac);
+                           FAR uint8_t *mac);
 
 uint8_t oa_tc6_bitrev8(uint8_t byte);
 

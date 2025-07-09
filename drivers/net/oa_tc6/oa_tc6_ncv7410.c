@@ -24,6 +24,8 @@
  * Included Files
  ****************************************************************************/
 
+#include <string.h>
+
 #include <debug.h>
 
 #include <nuttx/kmalloc.h>
@@ -32,14 +34,28 @@
 #include "oa_tc6_ncv7410.h"
 
 /*****************************************************************************
+ * Preprocessor Macros
+ ****************************************************************************/
+
+#define NCV_ADDR_FILTER_SLOTS 4
+#define NCV_ADDR_FILTER_FULL  0xf
+
+/*****************************************************************************
  * Private Types
  ****************************************************************************/
+
+struct oa_tc6_ncv7410_addrfilter
+{
+  uint8_t addrs[NCV_ADDR_FILTER_SLOTS][6]; /* Addrs that pass the filter    */
+  uint8_t active;                          /* On/Off status of the slots
+                                              LSB represents the first slot */
+};
 
 struct oa_tc6_ncv7410_driver_s
 {
   struct oa_tc6_driver_s oa_tc6_dev;
 
-  int somethingmore;
+  struct oa_tc6_ncv7410_addrfilter filter;
 };
 
 /*****************************************************************************
@@ -48,26 +64,31 @@ struct oa_tc6_ncv7410_driver_s
 
 /* Helper functions */
 
-static int oa_tc6_ncv7410_init_mac_addr(struct oa_tc6_ncv7410_driver_s *priv);
-static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv);
+static int oa_tc6_ncv7410_init_mac_addr(FAR struct oa_tc6_ncv7410_driver_s *priv);
+static int oa_tc6_ncv7410_config(FAR struct oa_tc6_ncv7410_driver_s *priv);
 
 /* OA-TC6 lower callbacks */
 
-static int oa_tc6_ncv7410_action(struct oa_tc6_driver_s *dev,
+static int oa_tc6_ncv7410_action(FAR struct oa_tc6_driver_s *dev,
                                  enum oa_tc6_action_e action);
-static int oa_tc6_ncv7410_rm_mac(struct oa_tc6_driver_s *dev, uint8_t *mac);
-static int oa_tc6_ncv7410_add_mac(struct oa_tc6_driver_s *dev, uint8_t *mac);
-static int oa_tc6_ncv7410_rm_mac(struct oa_tc6_driver_s *dev, uint8_t *mac);
-static int oa_tc6_ncv7410_ioctl(struct oa_tc6_driver_s *dev, int cmd,
+static int oa_tc6_ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
+                                 FAR const uint8_t *mac);
+#ifdef CONFIG_NET_MCASTGROUP
+static int oa_tc6_ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
+                                FAR const uint8_t *mac);
+#endif
+#ifdef CONFIG_NETDEV_IOCTL
+static int oa_tc6_ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
                                 unsigned long arg);
+#endif
 
 /*****************************************************************************
  * Private Functions
  ****************************************************************************/
 
-static int oa_tc6_ncv7410_init_mac_addr(struct oa_tc6_ncv7410_driver_s *priv)
+static int oa_tc6_ncv7410_init_mac_addr(FAR struct oa_tc6_ncv7410_driver_s *priv)
 {
-  struct oa_tc6_driver_s *dev = (struct oa_tc6_driver_s *)priv;
+  FAR struct oa_tc6_driver_s *dev = (FAR struct oa_tc6_driver_s *)priv;
 
   uint32_t regval;
   uint8_t  mac[6];
@@ -124,13 +145,16 @@ static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv)
     }
 
   /* enable MAC TX, RX, enable transmit FCS computation on MAC,
-   * enable MAC address filtering
+   * enable MAC address filtering if not promiscuous
    */
 
   regval =   (1 << NCV_MAC_CONTROL0_FCSA_POS)
            | (1 << NCV_MAC_CONTROL0_TXEN_POS)
            | (1 << NCV_MAC_CONTROL0_RXEN_POS);
-           /* | (1 << NCV_MAC_CONTROL0_ADRF_POS); */
+
+#ifndef CONFIG_NET_PROMISCUOUS
+  regval |= 1 << NCV_MAC_CONTROL0_ADRF_POS;
+#endif
 
   if (oa_tc6_write_reg(dev, NCV_MAC_CONTROL0_REGID, regval))
     {
@@ -162,30 +186,149 @@ static int oa_tc6_ncv7410_action(struct oa_tc6_driver_s *dev,
   return OK;
 }
 
-static int oa_tc6_ncv7410_add_mac(struct oa_tc6_driver_s *dev, uint8_t *mac)
+static int oa_tc6_ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
+                                 FAR const uint8_t *mac)
 {
-  struct oa_tc6_ncv7410_driver_s *priv = (struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
+  uint8_t active = priv->filter.active;
+  uint32_t regval;
+  int i;
 
-  /* do something */
+  /* Check if there is a free slot in the filter */
+
+  if (active == NCV_ADDR_FILTER_FULL)
+    {
+      nerr("Error: The address filter is already full\n");
+      return -EINVAL;
+    }
+
+  /* Check if the addr is already included */
+
+  for (i = 0; i < NCV_ADDR_FILTER_SLOTS; i++)
+    {
+      if (((active >> i) & 1) && memcmp(priv->filter.addrs[i], mac, 6) == 0)
+        {
+          nerr("Error: The provided address is already in the slot %d "
+               "of the filter\n", i);
+          return -EINVAL;
+        }
+    }
+
+  /* Find the first free slot */
+
+  for (i = 0; i < NCV_ADDR_FILTER_SLOTS; i++)
+    {
+      if (((active >> i) & 1) == 0)
+        {
+          break;
+        }
+    }
+
+  /* Write to the MAC-PHY */
+
+  regval =   (mac[2] << 24)
+           | (mac[3] << 16)
+           | (mac[4] << 8)
+           | (mac[5]);
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRFILTL_REGID(i), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return -EIO;
+    }
+
+  regval =   (1 << 31)  /* Enable filter */
+           | (mac[0] << 8)
+           | (mac[1]);
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRFILTH_REGID(i), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return -EIO;
+    }
+
+  /* All fields are significant */
+
+  regval = 0xffffffff;
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRMASKL_REGID(i), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return -EIO;
+    }
+
+  regval = 0x0000ffff;
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRMASKH_REGID(i), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return -EIO;
+    }
+
+  /* Update the filter structure */
+
+  memcpy(priv->filter.addrs[i], mac, 6);
+  active |= 1 << i;
+  priv->filter.active = active;
+
+  ninfo("Info: Adding new MAC address to the filter slot %d OK\n", i);
+
   return OK;
 }
 
-static int oa_tc6_ncv7410_rm_mac(struct oa_tc6_driver_s *dev, uint8_t *mac)
+#ifdef CONFIG_NET_MCASTGROUP
+static int oa_tc6_ncv7410_rmmac(struct oa_tc6_driver_s *dev,
+                                FAR const uint8_t *mac)
 {
-  struct oa_tc6_ncv7410_driver_s *priv = (struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
+  uint8_t active = priv->filter.active;
+  uint32_t regval;
+  int i;
 
-  /* do something */
+  for (i = 0; i < NCV_ADDR_FILTER_SLOTS; i++)
+    {
+      if (((active >> i) & 1) && memcmp(priv->filter.addrs[i], mac, 6) == 0)
+        {
+          break;
+        }
+
+      if (i == NCV_ADDR_FILTER_SLOTS - 1)
+        {
+          nerr("Error: The address is not present in the filter\n");
+          return -EINVAL;
+        }
+    }
+
+  /* Clear the ADDRFILT0H, where enable flag is located */
+
+  regval = 0;
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRFILTH_REGID(i), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return -EIO;
+    }
+
+  /* Update the filter structure */
+  active &= ~(1 << i);
+  priv->filter.active = active;
+
+  ninfo("Info: Removing the MAC address from the filter slot %d OK\n", i);
+
   return OK;
 }
+#endif
 
-static int oa_tc6_ncv7410_ioctl(struct oa_tc6_driver_s *dev, int cmd,
+#ifdef CONFIG_NETDEV_IOCTL
+static int oa_tc6_ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
                                 unsigned long arg)
 {
-  struct oa_tc6_ncv7410_driver_s *priv = (struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
 
   /* do something */
   return OK;
 }
+#endif
 
 /*****************************************************************************
  * Private Data
@@ -194,9 +337,13 @@ static int oa_tc6_ncv7410_ioctl(struct oa_tc6_driver_s *dev, int cmd,
 static struct oa_tc6_ops_s g_oa_tc6_ncv7410_ops =
 {
   oa_tc6_ncv7410_action,
-  oa_tc6_ncv7410_add_mac,
-  oa_tc6_ncv7410_rm_mac,
+  oa_tc6_ncv7410_addmac,
+#ifdef CONFIG_NET_MCASTGROUP
+  oa_tc6_ncv7410_rmmac,
+#endif
+#ifdef CONFIG_NETDEV_IOCTL
   oa_tc6_ncv7410_ioctl
+#endif
 };
 
 /*****************************************************************************

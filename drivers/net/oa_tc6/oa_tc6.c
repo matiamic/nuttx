@@ -144,6 +144,16 @@ static int oa_tc6_ifdown(FAR struct netdev_lowerhalf_s *dev);
 static int oa_tc6_transmit(FAR struct netdev_lowerhalf_s *dev,
                            FAR netpkt_t *pkt);
 static FAR netpkt_t *oa_tc6_receive(FAR struct netdev_lowerhalf_s *dev);
+#ifdef CONFIG_NET_MCASTGROUP
+static int oa_tc6_addmac(FAR struct netdev_lowerhalf_s *dev,
+                         FAR const uint8_t *mac);
+static int oa_tc6_rmmac(FAR struct netdev_lowerhalf_s *dev,
+                        FAR const uint8_t *mac);
+#endif
+#ifdef CONFIG_NETDEV_IOCTL
+static int oa_tc6_ioctl(FAR struct netdev_lowerhalf_s *dev, int cmd,
+                        unsigned long arg);
+#endif
 
 /* Debug */
 
@@ -161,6 +171,13 @@ static const struct netdev_ops_s g_oa_tc6_ops =
   .ifdown   = oa_tc6_ifdown,
   .transmit = oa_tc6_transmit,
   .receive  = oa_tc6_receive,
+#ifdef CONFIG_NET_MCASTGROUP
+  .addmac   = oa_tc6_addmac,
+  .rmmac    = oa_tc6_rmmac,
+#endif
+#ifdef CONFIG_NETDEV_IOCTL
+  .ioctl    = oa_tc6_ioctl
+#endif
 };
 
 /****************************************************************************
@@ -851,6 +868,10 @@ static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv)
 
   priv->ops->action(priv, OA_TC6_ACTION_CONFIG);
 
+  /* Add the MAC address to the address filter */
+
+  priv->ops->addmac(priv, priv->dev.netdev.d_mac.ether.ether_addr_octet);
+
   /* Enable RX buffer overflow interrupt */
 
   // questionable
@@ -1217,13 +1238,13 @@ static int oa_tc6_transmit(FAR struct netdev_lowerhalf_s *dev,
  * Name: oa_tc6_receive
  *
  * Description:
- *   NuttX callback: Claims an rx packet if available.
+ *   NuttX callback: Claims an RX packet if available.
  *
  * Input Parameters:
  *   dev - reference to the NuttX driver state structure
  *
  * Returned Values:
- *   If the rx packet is ready, its pointer is returned.
+ *   If the RX packet is ready, its pointer is returned.
  *   NULL is returned otherwise.
  *
  ****************************************************************************/
@@ -1236,7 +1257,8 @@ static FAR netpkt_t *oa_tc6_receive(FAR struct netdev_lowerhalf_s *dev)
 
   if (priv->rx_pkt_ready)
     {
-      ninfo("Info: Received RX packet %d bytes long\n", netpkt_getdatalen(&priv->dev, priv->rx_pkt));
+      ninfo("Info: Received RX packet %d bytes long\n",
+            netpkt_getdatalen(&priv->dev, priv->rx_pkt));
       netpkt_t *retval = priv->rx_pkt;
       priv->rx_pkt_ready = false;
       priv->rx_pkt = NULL;
@@ -1248,6 +1270,98 @@ static FAR netpkt_t *oa_tc6_receive(FAR struct netdev_lowerhalf_s *dev)
 
   return NULL;
 }
+
+#ifdef CONFIG_NET_MCASTGROUP
+/****************************************************************************
+ * Name: oa_tc6_addmac
+ *
+ * Description:
+ *   NuttX callback: Add multicast MAC address to the HW address filter.
+ *
+ * Input Parameters:
+ *   dev - reference to the NuttX driver state structure
+ *
+ * Returned Values:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_addmac(FAR struct netdev_lowerhalf_s *dev,
+                         FAR const uint8_t *mac)
+{
+  FAR struct oa_tc6_driver_s *priv = (FAR struct oa_tc6_driver_s *)dev;
+
+  if (priv->ops->addmac)
+    {
+      return priv->ops->addmac(priv, mac);
+    }
+
+  return -ENOSYS;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_rmmac
+ *
+ * Description:
+ *   NuttX callback: Remove multicast MAC address from the HW address filter.
+ *
+ * Input Parameters:
+ *   dev - reference to the NuttX driver state structure
+ *
+ * Returned Values:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_rmmac(FAR struct netdev_lowerhalf_s *dev,
+                        FAR const uint8_t *mac)
+{
+  FAR struct oa_tc6_driver_s *priv = (FAR struct oa_tc6_driver_s *)dev;
+
+  if (priv->ops->rmmac)
+    {
+      return priv->ops->rmmac(priv, mac);
+    }
+
+  return -ENOSYS;
+}
+#endif
+
+#ifdef CONFIG_NETDEV_IOCTL
+/****************************************************************************
+ * Name: oa_tc6_ioctl
+ *
+ * Description:
+ *   NuttX callback: Remove multicast MAC address from the HW address filter.
+ *
+ * Input Parameters:
+ *   dev - reference to the NuttX driver state structure
+ *
+ * Returned Values:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_ioctl(FAR struct netdev_lowerhalf_s *dev, int cmd,
+                        unsigned long arg)
+{
+  FAR struct oa_tc6_driver_s *priv = (FAR struct oa_tc6_driver_s *)dev;
+
+  switch (cmd)
+    {
+      /* Handle OA generic case */
+    }
+
+  /* If none of the OA generic commands, try the device-specific ioctl */
+
+  if (priv->ops->ioctl)
+    {
+      return priv->ops->ioctl(priv, cmd, arg);
+    }
+
+  return -EINVAL;
+}
+#endif
 
 /****************************************************************************
  * Public Functions
@@ -1420,8 +1534,8 @@ int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
  *
  ****************************************************************************/
 
-void oa_tc6_store_mac_addr(struct oa_tc6_driver_s *priv,
-                           uint8_t *mac)
+void oa_tc6_store_mac_addr(FAR struct oa_tc6_driver_s *priv,
+                           FAR uint8_t *mac)
 {
   memcpy(&priv->dev.netdev.d_mac.ether, mac, sizeof(struct ether_addr));
 }
@@ -1466,14 +1580,16 @@ uint8_t oa_tc6_bitrev8(uint8_t byte)
  ****************************************************************************/
 
 int oa_tc6_initialize(FAR struct spi_dev_s *spi,
-                      struct oa_tc6_config_s *config)
+                      FAR struct oa_tc6_config_s *config)
 {
-  FAR struct oa_tc6_driver_s        *priv   = NULL;
+  FAR struct oa_tc6_driver_s    *priv   = NULL;
   FAR struct netdev_lowerhalf_s *netdev = NULL;
   uint32_t device_type;
   int retval;
 
-  /* Setup a dummy driver so SPI transfers are possible using the same interface */
+  /* Setup a dummy driver so SPI transfers are possible using the
+   * same interface
+   * */
 
   struct oa_tc6_driver_s dummy = { 0 };
   dummy.spi = spi;
