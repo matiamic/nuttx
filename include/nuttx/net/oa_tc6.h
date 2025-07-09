@@ -61,7 +61,7 @@ struct oa_tc6_config_s
 
   CODE int  (*attach)(FAR struct oa_tc6_config_s *config, xcpt_t handler,
                       FAR void *arg);
-  CODE void (*enable)(FAR struct oa_tc6_config_s *config, bool enable);
+  CODE int (*enable)(FAR struct oa_tc6_config_s *config, bool enable);
 };
 
 /****************************************************************************

@@ -48,7 +48,7 @@ struct oa_tc6_ncv7410_driver_s
 
 /* Helper functions */
 
-static int oa_tc6_ncv7410_init_mac(struct oa_tc6_ncv7410_driver_s *priv);
+static int oa_tc6_ncv7410_init_mac_addr(struct oa_tc6_ncv7410_driver_s *priv);
 static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv);
 
 /* OA-TC6 lower callbacks */
@@ -65,14 +65,14 @@ static int oa_tc6_ncv7410_ioctl(struct oa_tc6_driver_s *dev, int cmd,
  * Private Functions
  ****************************************************************************/
 
-static int oa_tc6_ncv7410_init_mac(struct oa_tc6_ncv7410_driver_s *priv)
+static int oa_tc6_ncv7410_init_mac_addr(struct oa_tc6_ncv7410_driver_s *priv)
 {
-  struct oa_tc6_driver_s *dev = (oa_tc6_driver_s *)priv;
+  struct oa_tc6_driver_s *dev = (struct oa_tc6_driver_s *)priv;
 
   uint32_t regval;
   uint8_t  mac[6];
 
-  if (oa_tc6_read_reg(dev, OA_PHYID_REGID, &regval))
+  if (oa_tc6_read_reg(dev, OA_TC6_PHYID_REGID, &regval))
     {
       return ERROR;
     }
@@ -96,14 +96,14 @@ static int oa_tc6_ncv7410_init_mac(struct oa_tc6_ncv7410_driver_s *priv)
   mac[4] = regval >> 8;
   mac[5] = regval;
 
-  oa_tc6_store_mac(dev, mac);
+  oa_tc6_store_mac_addr(dev, mac);
 
   return OK;
 }
 
 static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv)
 {
-  struct oa_tc6_driver_s *dev = (oa_tc6_driver_s *)priv;
+  struct oa_tc6_driver_s *dev = (struct oa_tc6_driver_s *)priv;
 
   uint32_t regval;
 
@@ -118,7 +118,7 @@ static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv)
            | (1 << NCV_DIO0_OUT_VAL_POS)
            | (1 << NCV_DIO1_OUT_VAL_POS);
 
-  if (ncv_write_reg(dev, NCV_DIO_CONFIG_REGID, regval))
+  if (oa_tc6_write_reg(dev, NCV_DIO_CONFIG_REGID, regval))
     {
       return ERROR;
     }
@@ -129,10 +129,10 @@ static int oa_tc6_ncv7410_config(struct oa_tc6_ncv7410_driver_s *priv)
 
   regval =   (1 << NCV_MAC_CONTROL0_FCSA_POS)
            | (1 << NCV_MAC_CONTROL0_TXEN_POS)
-           | (1 << NCV_MAC_CONTROL0_RXEN_POS)
-           | (1 << NCV_MAC_CONTROL0_ADRF_POS);
+           | (1 << NCV_MAC_CONTROL0_RXEN_POS);
+           /* | (1 << NCV_MAC_CONTROL0_ADRF_POS); */
 
-  if (ncv_write_reg(dev, NCV_MAC_CONTROL0_REGID, regval))
+  if (oa_tc6_write_reg(dev, NCV_MAC_CONTROL0_REGID, regval))
     {
       return ERROR;
     }
@@ -149,8 +149,8 @@ static int oa_tc6_ncv7410_action(struct oa_tc6_driver_s *dev,
     {
       case OA_TC6_ACTION_CONFIG:
           return oa_tc6_ncv7410_config(priv);
-      case OA_TC6_ACTION_INIT_MAC:
-          return oa_tc6_ncv7410_init_mac(priv);
+      case OA_TC6_ACTION_INIT_MAC_ADDR:
+          return oa_tc6_ncv7410_init_mac_addr(priv);
       case OA_TC6_ACTION_IFUP:
       case OA_TC6_ACTION_IFDOWN:
       case OA_TC6_ACTION_EXST:

@@ -239,7 +239,7 @@ static void oa_tc6_interrupt_work(FAR void *arg)
     }
 
 #ifdef CONFIG_DEBUG_NET_INFO
-  oa_tc6_print_footer(footer);
+  /* oa_tc6_print_footer(footer); */
 #endif
 
   /* If EXST in the footer, check enabled sources
@@ -256,6 +256,7 @@ static void oa_tc6_interrupt_work(FAR void *arg)
     {
       /* Schedule IO work */
 
+      ninfo("Info: Scheduled io_work from interrupt_work\n");
       work_queue(OA_TC6_WORK, &priv->io_work, oa_tc6_io_work, priv, 0);
     }
 
@@ -290,6 +291,7 @@ static void oa_tc6_io_work(FAR void *arg)
 
   if (priv->ifstate != OA_TC6_IFSTATE_INIT_UP)
     {
+      nerr("Error: Trying to work when the interface is down\n");
       nxmutex_unlock(&priv->lock);
       return;
     }
@@ -496,6 +498,7 @@ static void oa_tc6_handle_rx_chunk(FAR struct oa_tc6_driver_s *priv,
         {
           if (oa_tc6_frame_drop(footer))
             {
+              nwarn("Warning: Frame dropped (FD)\n");
               oa_tc6_release_rx_packet(priv);
               return;
             }
@@ -844,6 +847,10 @@ static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv)
 
   ninfo("Configuring OA-TC6\n");
 
+  /* Call the MAC-PHY type specific config hook */
+
+  priv->ops->action(priv, OA_TC6_ACTION_CONFIG);
+
   /* Enable RX buffer overflow interrupt */
 
   // questionable
@@ -911,6 +918,10 @@ static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv)
       return ERROR;
     }
 
+  /* Enable interrupt on the board level */
+
+  priv->config->enable(priv->config, true);
+
   return OK;
 }
 
@@ -930,6 +941,10 @@ static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv)
 
 static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
 {
+  /* Disable interrupt on the board level */
+
+  priv->config->enable(priv->config, false);
+
   /* Disable PHY */
 
   uint32_t clearbits;
@@ -1221,6 +1236,7 @@ static FAR netpkt_t *oa_tc6_receive(FAR struct netdev_lowerhalf_s *dev)
 
   if (priv->rx_pkt_ready)
     {
+      ninfo("Info: Received RX packet %d bytes long\n", netpkt_getdatalen(&priv->dev, priv->rx_pkt));
       netpkt_t *retval = priv->rx_pkt;
       priv->rx_pkt_ready = false;
       priv->rx_pkt = NULL;
@@ -1404,8 +1420,8 @@ int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
  *
  ****************************************************************************/
 
-void oa_tc6_store_mac_address(struct oa_tc6_driver_s *priv,
-                          uint8_t *mac)
+void oa_tc6_store_mac_addr(struct oa_tc6_driver_s *priv,
+                           uint8_t *mac)
 {
   memcpy(&priv->dev.netdev.d_mac.ether, mac, sizeof(struct ether_addr));
 }
@@ -1487,23 +1503,27 @@ int oa_tc6_initialize(FAR struct spi_dev_s *spi,
     {
 #ifdef CONFIG_NET_OA_TC6_NCV7410
       case OA_TC6_NCV7410_DEVTYPE:
+          ninfo("Info: Detected NCV7410\n");
           priv = oa_tc6_ncv7410_initialize(spi, config);
           break;
 #endif
 #ifdef CONFIG_NET_OA_TC6_NCN26010
       case OA_TC6_NCN26010_DEVTYPE:
+          ninfo("Info: Detected NCN26010\n");
           priv = oa_tc6_ncn26010_initialize(spi, config);
           break;
 #endif
 #ifdef CONFIG_NET_OA_TC6_LAN8650
       case OA_TC6_LAN8650_DEVTYPE:
+          ninfo("Info: Detected LAN8650\n");
           priv = oa_tc6_lan8650_initialize(spi, config);
           break;
 #endif
       default:
           retval = -EINVAL;
-          nerr("Unknown device type, is the support enabled in Kconfig? "
-               "Does the revision match?\n");
+          nerr("Error: Unknown device type %X. "
+               "Is the support enabled in Kconfig? "
+               "Does the revision match?\n", device_type);
           goto errout;
     }
 
@@ -1514,21 +1534,19 @@ int oa_tc6_initialize(FAR struct spi_dev_s *spi,
       goto errout;
     }
 
+  priv->ifstate = OA_TC6_IFSTATE_RESET;
+
   priv->spi = spi;       /* Save the SPI instance                   */
   priv->config = config; /* Save the reference to the configuration */
 
-  priv->ifstate = OA_TC6_IFSTATE_RESET;
+  /* Check for mandatory callbacks */
 
-  /* Init MAC address */
-
-  if (priv->ops->action && priv->ops->action(priv, OA_TC6_ACTION_INIT_MAC))
+  if (! priv->ops->action)
     {
-      nerr("Error initializing MAC address\n");
+      nerr("An iplementation of the OA-TC6 action callback is missing\n");
       retval = -EIO;
       goto errout;
     }
-
-  /* Attach ISR */
 
   if (! priv->config->attach)
     {
@@ -1543,6 +1561,17 @@ int oa_tc6_initialize(FAR struct spi_dev_s *spi,
       retval = -EINVAL;
       goto errout;
     }
+
+  /* Init MAC address */
+
+  if (priv->ops->action(priv, OA_TC6_ACTION_INIT_MAC_ADDR))
+    {
+      nerr("Error initializing MAC address\n");
+      retval = -EIO;
+      goto errout;
+    }
+
+  /* Attach ISR */
 
   priv->config->attach(priv->config, oa_tc6_interrupt, priv);
 
