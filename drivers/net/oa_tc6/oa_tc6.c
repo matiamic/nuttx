@@ -515,7 +515,14 @@ static void oa_tc6_handle_rx_chunk(FAR struct oa_tc6_driver_s *priv,
         {
           if (oa_tc6_frame_drop(footer))
             {
-              nwarn("Warning: Frame dropped (FD)\n");
+              nwarn("Warning: Dropping frame (FD)\n");
+              oa_tc6_release_rx_packet(priv);
+              return;
+            }
+
+          if (priv->rx_pkt_idx > OA_TC6_MAX_FRAME_SIZE(priv))
+            {
+              nwarn("Warning: Dropping frame (too long)\n");
               oa_tc6_release_rx_packet(priv);
               return;
             }
@@ -533,7 +540,7 @@ static void oa_tc6_handle_rx_chunk(FAR struct oa_tc6_driver_s *priv,
         {
           nwarn("Dropping chunk of a packet that is too long");
 
-          /* set index so that a subsequent chunk with
+          /* Set index so that a subsequent chunk with
            * smaller payload won't pass
            */
 
@@ -547,10 +554,7 @@ static void oa_tc6_handle_rx_chunk(FAR struct oa_tc6_driver_s *priv,
 
       if (oa_tc6_end_valid(footer))
         {
-          /* finalize packet and notify the upper */
-
           oa_tc6_finalize_rx_packet(priv);
-          netdev_lower_rxready(&priv->dev);
         }
     }
 }
@@ -559,7 +563,8 @@ static void oa_tc6_handle_rx_chunk(FAR struct oa_tc6_driver_s *priv,
  * Name: oa_tc6_finalize_rx_packet
  *
  * Description:
- *   Strip down last 4 bytes (FCS) from the rx packet and mark it ready.
+ *   Strip down last 4 bytes (FCS) from the rx packet, mark it ready
+ *   and notify upper.
  *
  * Input Parameters:
  *   priv - pointer to the driver-specific state structure
@@ -574,6 +579,7 @@ static void oa_tc6_finalize_rx_packet(FAR struct oa_tc6_driver_s *priv)
   netpkt_setdatalen(&priv->dev, priv->rx_pkt,
                     netpkt_getdatalen(&priv->dev, priv->rx_pkt) - 4);
   priv->rx_pkt_ready = true;
+  netdev_lower_rxready(&priv->dev);
 }
 
 /****************************************************************************
