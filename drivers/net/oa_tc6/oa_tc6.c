@@ -125,17 +125,27 @@ static inline void oa_tc6_deselect_spi(FAR struct oa_tc6_driver_s *priv);
 
 /* OA_TC6 reset and configuration */
 
+static int oa_tc6_read_reg_raw(FAR struct spi_dev_s *spi,
+                               FAR struct oa_tc6_config_s *config,
+                               oa_tc6_regid_t regid, FAR uint32_t *word);
 static int oa_tc6_reset(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv);
 
-static int oa_tc6_get_device_type(FAR struct oa_tc6_driver_s *priv,
-                                  FAR uint32_t *device_type);
+static int oa_tc6_get_phyid(FAR struct spi_dev_s *spi,
+                            FAR struct oa_tc6_config_s *config,
+                            FAR uint32_t *phyid);
 
 /* Driver buffer manipulation */
 
 static void oa_tc6_reset_driver_buffers(FAR struct oa_tc6_driver_s *priv);
+
+/* Debug */
+
+#ifdef CONFIG_DEBUG_NET_INFO
+static void oa_tc6_print_footer(uint32_t footer);
+#endif
 
 /* NuttX callback functions */
 
@@ -153,12 +163,6 @@ static int oa_tc6_rmmac(FAR struct netdev_lowerhalf_s *dev,
 #ifdef CONFIG_NETDEV_IOCTL
 static int oa_tc6_ioctl(FAR struct netdev_lowerhalf_s *dev, int cmd,
                         unsigned long arg);
-#endif
-
-/* Debug */
-
-#ifdef CONFIG_DEBUG_NET_INFO
-static void oa_tc6_print_footer(uint32_t footer);
 #endif
 
 /****************************************************************************
@@ -183,6 +187,120 @@ static const struct netdev_ops_s g_oa_tc6_ops =
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Name: oa_tc6_get_parity
+ *
+ * Description:
+ *   Obtain parity of a 32-bit word.
+ *
+ * Input Parameters:
+ *   word - 32-bit word, subject to the parity calculation
+ *
+ * Returned Value:
+ *   If the parity of the word is even, zero is returned.
+ *   Otherwise one is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_get_parity(uint32_t word)
+{
+  /* www-graphics.stanford.edu/~seander/bithacks.html */
+
+  word ^= word >> 1;
+  word ^= word >> 2;
+  word = (word & 0x11111111u) * 0x11111111u;
+  return (word >> 28) & 1;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_poll_footer
+ *
+ * Description:
+ *   Poll a data transaction chunk footer.
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver-specific state structure
+ *   footer - pointer to a 32-bit footer destination variable
+ *
+ * Returned Value:
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_poll_footer(FAR struct oa_tc6_driver_s *priv,
+                              FAR uint32_t *footer)
+{
+  uint8_t txdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
+  uint8_t rxdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
+  uint32_t header;
+
+  header =   (1 << OA_TC6_DNC_POS)   /* Data Not Control */
+           | (1 << OA_TC6_NORX_POS); /* No Read */
+
+  if (oa_tc6_exchange_chunk(priv, txdata, rxdata, header, footer))
+    {
+      return ERROR;
+    }
+
+  return OK;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_exchange_chunk
+ *
+ * Description:
+ *   Send a data chunk to MAC-PHY and simultaneously receive chunk.
+ *
+ *   Computing header parity, checking footer parity, converting to proper
+ *   endianness and setting DNC flag is done by this function.
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver-specific state structure
+ *   txbuf  - buffer with transmit chunk data
+ *   rxbuf  - buffer to save the received chunk to
+ *   header - header controlling the transaction
+ *   footer - pointer to a 32-bit value for the footer
+ *
+ * Returned Value:
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_exchange_chunk(FAR struct oa_tc6_driver_s *priv,
+                                 FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
+                                 uint32_t header, FAR uint32_t *footer)
+{
+  header |= (1 << OA_TC6_DNC_POS);
+  header |= (!oa_tc6_get_parity(header) << OA_TC6_P_POS);
+  header = htobe32(header);
+
+  oa_tc6_select_spi(priv);
+
+  /* This depends on SW Chip Select */
+
+  SPI_EXCHANGE(priv->spi, (uint8_t *)&header, rxbuf, 4);
+  SPI_EXCHANGE(priv->spi, txbuf,
+               &rxbuf[4], OA_TC6_CHUNK_MAX_PAYLOAD_SIZE - 4);
+  SPI_EXCHANGE(priv->spi, &txbuf[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE - 4],
+               (uint8_t *)footer, 4);
+  oa_tc6_deselect_spi(priv);
+
+  *footer = be32toh(*footer);
+  if (!oa_tc6_get_parity(*footer))
+    {
+      nerr("Wrong parity in the footer\n");
+      return ERROR;
+    }
+
+  if (oa_tc6_header_bad(*footer))
+    {
+      nerr("HDRB set in the footer\n");
+      return ERROR;
+    }
+
+  return OK;
+}
 
 /****************************************************************************
  * Name: oa_tc6_interrupt
@@ -623,31 +741,6 @@ static void oa_tc6_release_rx_packet(FAR struct oa_tc6_driver_s *priv)
 }
 
 /****************************************************************************
- * Name: oa_tc6_get_parity
- *
- * Description:
- *   Obtain parity of a 32-bit word.
- *
- * Input Parameters:
- *   word - 32-bit word, subject to the parity calculation
- *
- * Returned Value:
- *   If the parity of the word is even, zero is returned.
- *   Otherwise one is returned.
- *
- ****************************************************************************/
-
-static int oa_tc6_get_parity(uint32_t word)
-{
-  /* www-graphics.stanford.edu/~seander/bithacks.html */
-
-  word ^= word >> 1;
-  word ^= word >> 2;
-  word = (word & 0x11111111u) * 0x11111111u;
-  return (word >> 28) & 1;
-}
-
-/****************************************************************************
  * Name: oa_tc6_(select/deselect)_spi
  *
  * Description:
@@ -681,91 +774,67 @@ static inline void oa_tc6_deselect_spi(FAR struct oa_tc6_driver_s *priv)
 }
 
 /****************************************************************************
- * Name: oa_tc6_exchange_chunk
+ * Name: oa_tc6_read_reg_raw
  *
  * Description:
- *   Send a data chunk to MAC-PHY and simultaneously receive chunk.
- *
- *   Computing header parity, checking footer parity, converting to proper
- *   endianness and setting DNC flag is done by this function.
+ *   Read a MAC-PHY register without the need for the whole oa_tc6_driver_s
+ *   structure.
  *
  * Input Parameters:
- *   priv   - pointer to the driver-specific state structure
- *   txbuf  - buffer with transmit chunk data
- *   rxbuf  - buffer to save the received chunk to
- *   header - header controlling the transaction
- *   footer - pointer to a 32-bit value for the footer
+ *   spi    - pointer to the spi device instance
+ *   config - pointer to the MAC-PHY configuration structure
  *
  * Returned Value:
- *   On a successful transaction OK is returned, otherwise ERROR is returned.
+ *   On successful transaction OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
-static int oa_tc6_exchange_chunk(FAR struct oa_tc6_driver_s *priv,
-                                 FAR uint8_t *txbuf, FAR uint8_t *rxbuf,
-                                 uint32_t header, FAR uint32_t *footer)
+static int oa_tc6_read_reg_raw(FAR struct spi_dev_s *spi,
+                               FAR struct oa_tc6_config_s *config,
+                               oa_tc6_regid_t regid, FAR uint32_t *word)
 {
-  header |= (1 << OA_TC6_DNC_POS);
-  header |= (!oa_tc6_get_parity(header) << OA_TC6_P_POS);
-  header = htobe32(header);
-
-  oa_tc6_select_spi(priv);
-
-  /* This depends on SW Chip Select */
-
-  SPI_EXCHANGE(priv->spi, (uint8_t *)&header, rxbuf, 4);
-  SPI_EXCHANGE(priv->spi, txbuf,
-               &rxbuf[4], OA_TC6_CHUNK_MAX_PAYLOAD_SIZE - 4);
-  SPI_EXCHANGE(priv->spi, &txbuf[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE - 4],
-               (uint8_t *)footer, 4);
-  oa_tc6_deselect_spi(priv);
-
-  *footer = be32toh(*footer);
-  if (!oa_tc6_get_parity(*footer))
-    {
-      nerr("Wrong parity in the footer\n");
-      return ERROR;
-    }
-
-  if (oa_tc6_header_bad(*footer))
-    {
-      nerr("HDRB set in the footer\n");
-      return ERROR;
-    }
-
-  return OK;
-}
-
-/****************************************************************************
- * Name: oa_tc6_poll_footer
- *
- * Description:
- *   Poll a data transaction chunk footer.
- *
- * Input Parameters:
- *   priv   - pointer to the driver-specific state structure
- *   footer - pointer to a 32-bit footer destination variable
- *
- * Returned Value:
- *   On a successful transaction OK is returned, otherwise ERROR is returned.
- *
- ****************************************************************************/
-
-static int oa_tc6_poll_footer(FAR struct oa_tc6_driver_s *priv,
-                              FAR uint32_t *footer)
-{
-  uint8_t txdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
-  uint8_t rxdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
+  uint32_t txdata[3];
+  uint32_t rxdata[3];
+  uint8_t  mms  = OA_TC6_REGID_GET_MMS(regid);
+  uint16_t addr = OA_TC6_REGID_GET_ADDR(regid);
+  int parity;
   uint32_t header;
 
-  header =   (1 << OA_TC6_DNC_POS)   /* Data Not Control */
-           | (1 << OA_TC6_NORX_POS); /* No Read */
+  /* Prepare header */
 
-  if (oa_tc6_exchange_chunk(priv, txdata, rxdata, header, footer))
+  header =   (mms  << OA_TC6_MMS_POS)
+           | (addr << OA_TC6_ADDR_POS);
+  parity = oa_tc6_get_parity(header);
+  header |= parity ? 0 : OA_TC6_P_MASK;  /* Make header odd parity */
+
+  /* Convert to big endian */
+
+  header = htobe32(header);
+
+  /* Prepare exchange */
+
+  txdata[0] = header;
+
+  SPI_LOCK(spi, true);
+  SPI_SETMODE(spi, OA_TC6_SPI_MODE);
+  SPI_SETBITS(spi, OA_TC6_SPI_NBITS);
+  SPI_HWFEATURES(spi, 0);  /* disable HW features */
+  SPI_SETFREQUENCY(spi, config->frequency);
+  SPI_SELECT(spi, config->id, true);
+
+  SPI_EXCHANGE(spi, txdata, rxdata, 12);
+
+  SPI_SELECT(spi, config->id, false);
+  SPI_LOCK(spi, false);
+
+  *word = be32toh(rxdata[2]);
+  if (rxdata[1] != header)
     {
+      nerr("Error reading register\n");
       return ERROR;
     }
 
+  ninfo("Reading register OK\n");
   return OK;
 }
 
@@ -1000,24 +1069,25 @@ static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
 }
 
 /****************************************************************************
- * Name: oa_tc6_get_device_type
+ * Name: oa_tc6_get_phyid
  *
  * Description:
  *   Read the device type from the PHYID register.
  *
  * Input Parameters:
- *   priv        - pointer to the driver-specific state structure
- *   device_type - pointer to the destination of the PHYID value
+ *   priv  - pointer to the driver-specific state structure
+ *   phyid - pointer to the destination of the PHYID value
  *
  * Returned Value:
  *   On success OK is returned, otherwise ERROR is returned.
  *
  ****************************************************************************/
 
-static int oa_tc6_get_device_type(FAR struct oa_tc6_driver_s *priv,
-                                  FAR uint32_t *device_type)
+static int oa_tc6_get_phyid(FAR struct spi_dev_s *spi,
+                            FAR struct oa_tc6_config_s *config,
+                            FAR uint32_t *phyid)
 {
-  return oa_tc6_read_reg(priv, OA_TC6_PHYID_REGID, device_type);
+  return oa_tc6_read_reg_raw(spi, config, OA_TC6_PHYID_REGID, phyid);
 }
 
 /****************************************************************************
@@ -1432,7 +1502,7 @@ int oa_tc6_write_reg(FAR struct oa_tc6_driver_s *priv,
  * Name: oa_tc6_read_reg
  *
  * Description:
- *   Read a MAC-PHY register.
+ *   Read a MAC-PHY register. Thin wrapper around oa_tc6_read_reg_raw.
  *
  * Input Parameters:
  *   priv  - pointer to the driver-specific state structure
@@ -1447,41 +1517,7 @@ int oa_tc6_write_reg(FAR struct oa_tc6_driver_s *priv,
 int oa_tc6_read_reg(FAR struct oa_tc6_driver_s *priv,
                     oa_tc6_regid_t regid, FAR uint32_t *word)
 {
-  uint32_t txdata[3];
-  uint32_t rxdata[3];
-  uint8_t  mms  = OA_TC6_REGID_GET_MMS(regid);
-  uint16_t addr = OA_TC6_REGID_GET_ADDR(regid);
-  int parity;
-  uint32_t header;
-
-  /* Prepare header */
-
-  header =   (mms  << OA_TC6_MMS_POS)
-           | (addr << OA_TC6_ADDR_POS);
-  parity = oa_tc6_get_parity(header);
-  header |= parity ? 0 : OA_TC6_P_MASK;  /* Make header odd parity */
-
-  /* Convert to big endian */
-
-  header = htobe32(header);
-
-  /* Prepare exchange */
-
-  txdata[0] = header;
-
-  oa_tc6_select_spi(priv);
-  SPI_EXCHANGE(priv->spi, txdata, rxdata, 12);
-  oa_tc6_deselect_spi(priv);
-
-  *word = be32toh(rxdata[2]);
-  if (rxdata[1] != header)
-    {
-      nerr("Error reading register\n");
-      return ERROR;
-    }
-
-  ninfo("Reading register OK\n");
-  return OK;
+  return oa_tc6_read_reg_raw(priv->spi, priv->config, regid, word);
 }
 
 /****************************************************************************
@@ -1590,29 +1626,22 @@ int oa_tc6_initialize(FAR struct spi_dev_s *spi,
 {
   FAR struct oa_tc6_driver_s    *priv   = NULL;
   FAR struct netdev_lowerhalf_s *netdev = NULL;
-  uint32_t device_type;
+  uint32_t phyid;
   int retval;
 
-  /* Setup a dummy driver so SPI transfers are possible using the
-   * same interface
-   * */
-
-  struct oa_tc6_driver_s dummy = { 0 };
-  dummy.spi = spi;
-  dummy.config = config;
-
   /* Reset MAC-PHY (done only using OA_TC6 common registers) */
+  // TODO: leave for device-specific
 
-  if (oa_tc6_reset(&dummy))
-    {
-      nerr("Error resetting OA_TC6 device.\n");
-      retval = -EIO;
-      goto errout;
-    }
+  /* if (oa_tc6_reset(&dummy)) */
+  /*   { */
+  /*     nerr("Error resetting OA_TC6 device.\n"); */
+  /*     retval = -EIO; */
+  /*     goto errout; */
+  /*   } */
 
   /* Get device type from MAC-PHY OA_TC6 common registers */
 
-  if (oa_tc6_get_device_type(&dummy, &device_type))
+  if (oa_tc6_get_phyid(spi, config, &phyid))
     {
       nerr("Error getting the type of the OA_TC6 device.\n");
       retval = -EIO;
@@ -1621,7 +1650,7 @@ int oa_tc6_initialize(FAR struct spi_dev_s *spi,
 
   /* Call init function based on the MAC-PHY type */
 
-  switch (device_type)
+  switch (phyid)
     {
 #ifdef CONFIG_NET_OA_TC6_NCV7410
       case OA_TC6_NCV7410_DEVTYPE:
@@ -1643,9 +1672,9 @@ int oa_tc6_initialize(FAR struct spi_dev_s *spi,
 #endif
       default:
           retval = -EINVAL;
-          nerr("Error: Unknown device type %X. "
+          nerr("Error: Unknown PHYID %X. "
                "Is the support enabled in Kconfig? "
-               "Does the revision match?\n", device_type);
+               "Does the revision match?\n", phyid);
           goto errout;
     }
 
@@ -1663,26 +1692,9 @@ int oa_tc6_initialize(FAR struct spi_dev_s *spi,
 
   /* Check for mandatory callbacks */
 
-  if (! priv->ops->action)
-    {
-      nerr("An iplementation of the OA-TC6 action callback is missing\n");
-      retval = -EIO;
-      goto errout;
-    }
-
-  if (! priv->config->attach)
-    {
-      nerr("Error: Attach callback not provided by caller\n");
-      retval = -EINVAL;
-      goto errout;
-    }
-
-  if (! priv->config->enable)
-    {
-      nerr("Error: Enable callback not provided by caller\n");
-      retval = -EINVAL;
-      goto errout;
-    }
+  DEBUGASSERT(priv->ops->action);
+  DEBUGASSERT(priv->config->attach);
+  DEBUGASSERT(priv->config->enable);
 
   /* Init MAC address */
 
