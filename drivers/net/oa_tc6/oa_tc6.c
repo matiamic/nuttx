@@ -123,19 +123,23 @@ static void oa_tc6_release_rx_packet(FAR struct oa_tc6_driver_s *priv);
 static inline void oa_tc6_select_spi(FAR struct oa_tc6_driver_s *priv);
 static inline void oa_tc6_deselect_spi(FAR struct oa_tc6_driver_s *priv);
 
-/* OA_TC6 reset and configuration */
+/* OA-TC6 reset and configuration */
 
 static int oa_tc6_read_reg_raw(FAR struct spi_dev_s *spi,
                                FAR struct oa_tc6_config_s *config,
                                oa_tc6_regid_t regid, FAR uint32_t *word);
+static int oa_tc6_get_phyid(FAR struct spi_dev_s *spi,
+                            FAR struct oa_tc6_config_s *config,
+                            FAR uint32_t *phyid);
+static int oa_tc6_init_by_id(FAR struct spi_dev_s *spi,
+                             FAR struct oa_tc6_config_s *config,
+                             uint32_t phyid);
+
 static int oa_tc6_reset(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv);
 
-static int oa_tc6_get_phyid(FAR struct spi_dev_s *spi,
-                            FAR struct oa_tc6_config_s *config,
-                            FAR uint32_t *phyid);
 
 /* Driver buffer manipulation */
 
@@ -231,14 +235,14 @@ static int oa_tc6_get_parity(uint32_t word)
 static int oa_tc6_poll_footer(FAR struct oa_tc6_driver_s *priv,
                               FAR uint32_t *footer)
 {
-  uint8_t txdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
-  uint8_t rxdata[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
+  uint8_t *txbuf = priv->txbuf;
+  uint8_t *rxbuf = priv->rxbuf;
   uint32_t header;
 
   header =   (1 << OA_TC6_DNC_POS)   /* Data Not Control */
            | (1 << OA_TC6_NORX_POS); /* No Read */
 
-  if (oa_tc6_exchange_chunk(priv, txdata, rxdata, header, footer))
+  if (oa_tc6_exchange_chunk(priv, txbuf, rxbuf, header, footer))
     {
       return ERROR;
     }
@@ -281,21 +285,21 @@ static int oa_tc6_exchange_chunk(FAR struct oa_tc6_driver_s *priv,
 
   SPI_EXCHANGE(priv->spi, (uint8_t *)&header, rxbuf, 4);
   SPI_EXCHANGE(priv->spi, txbuf,
-               &rxbuf[4], OA_TC6_CHUNK_MAX_PAYLOAD_SIZE - 4);
-  SPI_EXCHANGE(priv->spi, &txbuf[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE - 4],
+               &rxbuf[4], priv->config->chunk_payload_size - 4);
+  SPI_EXCHANGE(priv->spi, &txbuf[priv->config->chunk_payload_size - 4],
                (uint8_t *)footer, 4);
   oa_tc6_deselect_spi(priv);
 
   *footer = be32toh(*footer);
   if (!oa_tc6_get_parity(*footer))
     {
-      nerr("Wrong parity in the footer\n");
+      nerr("Error: Wrong parity in the footer\n");
       return ERROR;
     }
 
   if (oa_tc6_header_bad(*footer))
     {
-      nerr("HDRB set in the footer\n");
+      nerr("Error: HDRB set in the footer\n");
       return ERROR;
     }
 
@@ -366,7 +370,7 @@ static void oa_tc6_interrupt_work(FAR void *arg)
 
   if (oa_tc6_poll_footer(priv, &footer))
     {
-      nerr("Polling footer unsuccessful\n");
+      nerr("Error: Polling footer unsuccessful\n");
 
       /* TODO: don't */
 
@@ -416,8 +420,8 @@ static void oa_tc6_io_work(FAR void *arg)
 {
   FAR struct oa_tc6_driver_s *priv = (FAR struct oa_tc6_driver_s *)arg;
 
-  uint8_t txbuf[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
-  uint8_t rxbuf[OA_TC6_CHUNK_MAX_PAYLOAD_SIZE];
+  uint8_t *txbuf = priv->txbuf;
+  uint8_t *rxbuf = priv->rxbuf;
 
   uint32_t header;
   uint32_t footer;
@@ -437,7 +441,7 @@ static void oa_tc6_io_work(FAR void *arg)
 
   if (oa_tc6_exchange_chunk(priv, txbuf, rxbuf, header, &footer))
     {
-      nerr("Error during chunk exchange\n");
+      nerr("Error: Chunk exchange failed\n");
 
       /* TODO: do not panic, the best is probably to report the error
        * and reset MAC to some defined state and reset driver
@@ -494,14 +498,14 @@ static uint32_t oa_tc6_prep_chunk_exchange(FAR struct oa_tc6_driver_s *priv,
 
       txlen = priv->tx_pkt_len - priv->tx_pkt_idx;
 
-      if (txlen <= OA_TC6_CHUNK_MAX_PAYLOAD_SIZE)
+      if (txlen <= priv->config->chunk_payload_size)
         {
           header |=   (1 << OA_TC6_EV_POS)             /* End Valid       */
                     | ((txlen - 1) << OA_TC6_EBO_POS); /* End Byte Offset */
         }
       else
         {
-          txlen = OA_TC6_CHUNK_MAX_PAYLOAD_SIZE;
+          txlen = priv->config->chunk_payload_size;
         }
 
       /* Copy data from network to txbuf */
@@ -649,7 +653,7 @@ static void oa_tc6_handle_rx_chunk(FAR struct oa_tc6_driver_s *priv,
         }
       else
         {
-          rxlen = OA_TC6_CHUNK_MAX_PAYLOAD_SIZE;
+          rxlen = priv->config->chunk_payload_size;
         }
 
       newlen = priv->rx_pkt_idx + rxlen;
@@ -830,12 +834,79 @@ static int oa_tc6_read_reg_raw(FAR struct spi_dev_s *spi,
   *word = be32toh(rxdata[2]);
   if (rxdata[1] != header)
     {
-      nerr("Error reading register\n");
+      nerr("Error: Reading register failed, MMS: %d, ADDR: 0x%x\n",
+           mms, addr);
       return ERROR;
     }
 
-  ninfo("Reading register OK\n");
+  ninfo("Info: Reading register OK, MMS: %d, ADDR: 0x%x\n", mms, addr);
   return OK;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_get_phyid
+ *
+ * Description:
+ *   Read the device type from the PHYID register.
+ *
+ * Input Parameters:
+ *   priv  - pointer to the driver-specific state structure
+ *   phyid - pointer to the destination of the PHYID value
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_get_phyid(FAR struct spi_dev_s *spi,
+                            FAR struct oa_tc6_config_s *config,
+                            FAR uint32_t *phyid)
+{
+  return oa_tc6_read_reg_raw(spi, config, OA_TC6_PHYID_REGID, phyid);
+}
+
+/****************************************************************************
+ * Name: oa_tc6_init_by_id
+ *
+ * Description:
+ *   Initialize OA-TC6 device driver based on the given PHYID
+ *
+ * Input Parameters:
+ *   spi    - reference to the SPI driver state data
+ *   config - reference to the predefined configuration of the driver
+ *   phyid  - identification of the OA-TC6 MAC-PHY chip
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_init_by_id(FAR struct spi_dev_s *spi,
+                             FAR struct oa_tc6_config_s *config,
+                             uint32_t phyid)
+{
+  switch (phyid)
+    {
+#ifdef CONFIG_NET_OA_TC6_NCV7410
+      case OA_TC6_NCV7410_PHYID:
+          ninfo("Info: Detected NCV7410\n");
+          return ncv7410_initialize(spi, config);
+
+      case OA_TC6_NCN26010_PHYID:
+          ninfo("Info: Detected NCN26010\n");
+          return ncv7410_initialize(spi, config);
+#endif
+#ifdef CONFIG_NET_OA_TC6_LAN8650
+      case OA_TC6_LAN8650_PHYID:
+          ninfo("Info: Detected LAN8650\n");
+          return oa_tc6_lan8650_initialize(spi, config);
+#endif
+      default:
+          nerr("Error: Unknown PHYID %X. "
+               "Is the support enabled in Kconfig? "
+               "Does the revision match?\n", phyid);
+          return -EINVAL;
+    }
 }
 
 /****************************************************************************
@@ -896,15 +967,6 @@ static int oa_tc6_reset(FAR struct oa_tc6_driver_s *priv)
       return ERROR;
     }
 
-  /* Clear HDRE in STATUS0 (due to a bug in NCV7410) */
-  // move this to device-specific
-
-  if (oa_tc6_write_reg(priv, OA_TC6_STATUS0_REGID,
-                       1 << OA_TC6_STATUS0_HDRE_POS))
-    {
-      return ERROR;
-    }
-
   /* Clear reset complete flag */
 
   if (oa_tc6_write_reg(priv, OA_TC6_STATUS0_REGID,
@@ -936,6 +998,8 @@ static int oa_tc6_reset(FAR struct oa_tc6_driver_s *priv)
 static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv)
 {
   uint32_t regval;
+  uint8_t chunk_payload_size = priv->config->chunk_payload_size;
+  uint8_t cps = 0;
 
   ninfo("Configuring OA-TC6\n");
 
@@ -962,9 +1026,22 @@ static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv)
   regval =   (1 << OA_TC6_CONFIG0_SYNC_POS)
            | (1 << OA_TC6_CONFIG0_CSARFE_POS)
            | (1 << OA_TC6_CONFIG0_ZARFE_POS)
-           | (1 << OA_TC6_CONFIG0_RXCTE_POS)  /* A bit lower latency */
-           | (3 << OA_TC6_CONFIG0_TXCTHRESH_POS)
-           | (6 << OA_TC6_CONFIG0_CPS_POS);
+           | (3 << OA_TC6_CONFIG0_TXCTHRESH_POS);
+
+  if (priv->config->rx_cut_through)
+    {
+      regval |= 1 << OA_TC6_CONFIG0_RXCTE_POS; /* Enable RX cut-through */
+    }
+
+  /* Calculate and set CPS: 2^(CPS) = chunk_payload_size */
+
+  while (chunk_payload_size != 1)
+    {
+      chunk_payload_size >>= 1;
+      cps += 1;
+    }
+
+  regval |= (cps << OA_TC6_CONFIG0_CPS_POS);
 
   if (oa_tc6_write_reg(priv, OA_TC6_CONFIG0_REGID, regval))
     {
@@ -994,7 +1071,7 @@ static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv)
 
   uint32_t setbits;
 
-  ninfo("Enabling OA_TC6\n");
+  ninfo("Enabling OA-TC6\n");
 
   /* Enable RX and TX in PHY */
 
@@ -1045,7 +1122,7 @@ static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
 
   uint32_t clearbits;
 
-  ninfo("Disabling OA_TC6\n");
+  ninfo("Disabling OA-TC6\n");
 
   /* Disable PHY interrupt */
 
@@ -1066,28 +1143,6 @@ static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
     }
 
   return OK;
-}
-
-/****************************************************************************
- * Name: oa_tc6_get_phyid
- *
- * Description:
- *   Read the device type from the PHYID register.
- *
- * Input Parameters:
- *   priv  - pointer to the driver-specific state structure
- *   phyid - pointer to the destination of the PHYID value
- *
- * Returned Value:
- *   On success OK is returned, otherwise ERROR is returned.
- *
- ****************************************************************************/
-
-static int oa_tc6_get_phyid(FAR struct spi_dev_s *spi,
-                            FAR struct oa_tc6_config_s *config,
-                            FAR uint32_t *phyid)
-{
-  return oa_tc6_read_reg_raw(spi, config, OA_TC6_PHYID_REGID, phyid);
 }
 
 /****************************************************************************
@@ -1184,17 +1239,17 @@ static int oa_tc6_ifup(FAR struct netdev_lowerhalf_s *dev)
 
   if (priv->ifstate == OA_TC6_IFSTATE_INIT_UP)
     {
-      nerr("Tried to bring OA_TC6 interface up when already up\n");
+      nerr("Error: Tried to bring OA-TC6 interface up when already up\n");
       return -EINVAL;
     }
 
-  ninfo("Bringing up OA_TC6\n");
+  ninfo("Info: Bringing up OA-TC6\n");
 
   if (priv->ifstate == OA_TC6_IFSTATE_RESET)
     {
       if (oa_tc6_config(priv) == ERROR)
         {
-          nerr("Error configuring OA_TC6\n");
+          nerr("Error: Configuration of the OA-TC6 failed\n");
           return -EIO;
         }
 
@@ -1209,7 +1264,7 @@ static int oa_tc6_ifup(FAR struct netdev_lowerhalf_s *dev)
 
   if (oa_tc6_enable(priv) == ERROR)
     {
-      nerr("Error enabling OA_TC6\n");
+      nerr("Error: Enabling of the OA-TC6 interface failed\n");
       priv->ifstate = OA_TC6_IFSTATE_INIT_DOWN;
       return -EIO;
     }
@@ -1245,7 +1300,7 @@ static int oa_tc6_ifdown(FAR struct netdev_lowerhalf_s *dev)
   if (priv->ifstate != OA_TC6_IFSTATE_INIT_UP)
     {
       nxmutex_unlock(&priv->lock);
-      nerr("Tried to bring the OA_TC6 interface down but it is not up\n");
+      nerr("Error: Tried to bring the OA-TC6 interface down when not up\n");
       return -EINVAL;
     }
 
@@ -1255,7 +1310,7 @@ static int oa_tc6_ifdown(FAR struct netdev_lowerhalf_s *dev)
   if (oa_tc6_disable(priv) == ERROR)
     {
       nxmutex_unlock(&priv->lock);
-      nerr("Error disabling OA_TC6\n");
+      nerr("Error: Disabling the OA-TC6 interface failed\n");
       return -EIO;
     }
 
@@ -1490,11 +1545,12 @@ int oa_tc6_write_reg(FAR struct oa_tc6_driver_s *priv,
   oa_tc6_deselect_spi(priv);
   if (rxdata[1] != header)
     {
-      nerr("Error writing register\n");
+      nerr("Error: Writing register failed, MMS: %d, ADDR: 0x%x\n",
+           mms, addr);
       return ERROR;
     }
 
-  ninfo("Writing register OK\n");
+  ninfo("Info: Writing register OK, MMS: %d, ADDR: 0x%x\n", mms, addr);
   return OK;
 }
 
@@ -1610,7 +1666,8 @@ uint8_t oa_tc6_bitrev8(uint8_t byte)
  * Name: oa_tc6_initialize
  *
  * Description:
- *   Initialize the Ethernet driver.
+ *   Read the PHYID of the MAC-PHY device and initialize the matching
+ *   driver.
  *
  * Input Parameters:
  *   spi    - reference to the SPI driver state data
@@ -1624,112 +1681,141 @@ uint8_t oa_tc6_bitrev8(uint8_t byte)
 int oa_tc6_initialize(FAR struct spi_dev_s *spi,
                       FAR struct oa_tc6_config_s *config)
 {
-  FAR struct oa_tc6_driver_s    *priv   = NULL;
-  FAR struct netdev_lowerhalf_s *netdev = NULL;
   uint32_t phyid;
-  int retval;
 
-  /* Reset MAC-PHY (done only using OA_TC6 common registers) */
-  // TODO: leave for device-specific
-
-  /* if (oa_tc6_reset(&dummy)) */
-  /*   { */
-  /*     nerr("Error resetting OA_TC6 device.\n"); */
-  /*     retval = -EIO; */
-  /*     goto errout; */
-  /*   } */
-
-  /* Get device type from MAC-PHY OA_TC6 common registers */
+  /* Get device type from MAC-PHY OA-TC6 common registers */
 
   if (oa_tc6_get_phyid(spi, config, &phyid))
     {
-      nerr("Error getting the type of the OA_TC6 device.\n");
-      retval = -EIO;
-      goto errout;
+      nerr("Error: Reading of the PHYID failed\n");
+      return -EIO;
     }
 
-  /* Call init function based on the MAC-PHY type */
+  return oa_tc6_init_by_id(spi, config, phyid);
+}
 
-  switch (phyid)
+/****************************************************************************
+ * Name: oa_tc6_common_init
+ *
+ * Description:
+ *   Initialize the upper-half part of the device structure and reset
+ *   the MAC-PHY.
+ *
+ * Input Parameters:
+ *   priv  - pointer to the driver-specific state structure
+ *   spi    - reference to the SPI driver state data
+ *   config - reference to the predefined configuration of the driver
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+int oa_tc6_common_init(FAR struct oa_tc6_driver_s *priv,
+                       FAR struct spi_dev_s *spi,
+                       FAR struct oa_tc6_config_s *config)
+{
+  FAR struct netdev_lowerhalf_s *netdev;
+  uint32_t stdcap;
+  uint8_t mincps; /* Minimum supported chunk payload size */
+  bool ctc; /* Cut-through capability */
+
+  /* Validate spi and config */
+
+  DEBUGASSERT(spi);
+  DEBUGASSERT(config);
+
+  DEBUGASSERT(   (config->chunk_payload_size == 0)
+              || (config->chunk_payload_size == 8)
+              || (config->chunk_payload_size == 16)
+              || (config->chunk_payload_size == 32)
+              || (config->chunk_payload_size == 64));
+
+  if (config->chunk_payload_size == 0)
     {
-#ifdef CONFIG_NET_OA_TC6_NCV7410
-      case OA_TC6_NCV7410_DEVTYPE:
-          ninfo("Info: Detected NCV7410\n");
-          priv = oa_tc6_ncv7410_initialize(spi, config);
-          break;
-#endif
-#ifdef CONFIG_NET_OA_TC6_NCN26010
-      case OA_TC6_NCN26010_DEVTYPE:
-          ninfo("Info: Detected NCN26010\n");
-          priv = oa_tc6_ncn26010_initialize(spi, config);
-          break;
-#endif
-#ifdef CONFIG_NET_OA_TC6_LAN8650
-      case OA_TC6_LAN8650_DEVTYPE:
-          ninfo("Info: Detected LAN8650\n");
-          priv = oa_tc6_lan8650_initialize(spi, config);
-          break;
-#endif
-      default:
-          retval = -EINVAL;
-          nerr("Error: Unknown PHYID %X. "
-               "Is the support enabled in Kconfig? "
-               "Does the revision match?\n", phyid);
-          goto errout;
+      config->chunk_payload_size = 64;
     }
 
-  if (priv == NULL)
-    {
-      nerr("Error initializing OA-TC6 device\n");
-      retval = -ENOMEM;
-      goto errout;
-    }
-
-  priv->ifstate = OA_TC6_IFSTATE_RESET;
-
-  priv->spi = spi;       /* Save the SPI instance                   */
+  priv->spi = spi;       /* Save the reference to the SPI instance  */
   priv->config = config; /* Save the reference to the configuration */
+
+  if (oa_tc6_read_reg(priv, OA_TC6_STDCAP_REGID, &stdcap))
+    {
+      nerr("Error: Reading STDCAP register failed\n");
+      return -EIO;
+    }
+
+  mincps = 1 << oa_tc6_get_field(stdcap, STDCAP_MINCPS);
+  ctc = oa_tc6_get_field(stdcap, STDCAP_CTC);
+  DEBUGASSERT(mincps <= config->chunk_payload_size);
+  DEBUGASSERT((config->rx_cut_through == false) || ctc);
 
   /* Check for mandatory callbacks */
 
+  DEBUGASSERT(priv->ops);
   DEBUGASSERT(priv->ops->action);
   DEBUGASSERT(priv->config->attach);
   DEBUGASSERT(priv->config->enable);
 
-  /* Init MAC address */
-
-  if (priv->ops->action(priv, OA_TC6_ACTION_INIT_MAC_ADDR))
-    {
-      nerr("Error initializing MAC address\n");
-      retval = -EIO;
-      goto errout;
-    }
-
   /* Attach ISR */
 
-  priv->config->attach(priv->config, oa_tc6_interrupt, priv);
+  if (priv->config->attach(priv->config, oa_tc6_interrupt, priv))
+    {
+      nerr("Error: Attaching ISR failed\n");
+      return -EINVAL;
+    }
 
   /* Init lock */
 
   nxmutex_init(&priv->lock);
 
-  /* Register the device with the OS */
+  /* Fill the fields for the netdev upperhalf driver */
 
   netdev = &priv->dev;
   netdev->quota[NETPKT_TX] = OA_TC6_TX_QUOTA;
   netdev->quota[NETPKT_RX] = OA_TC6_RX_QUOTA;
   netdev->ops = &g_oa_tc6_ops;
 
-  retval = netdev_lower_register(netdev, NET_LL_ETHERNET);
-  if (retval == OK)
+  /* Allocate SPI buffers based on the config */
+
+  priv->txbuf = kmm_malloc(config->chunk_payload_size);
+  priv->rxbuf = kmm_malloc(config->chunk_payload_size);
+  if ((priv->txbuf == NULL) || (priv->rxbuf == NULL))
     {
-      ninfo("Successfully registered OA-TC6 network driver\n");
-      return OK;
+      nerr("Error: Could not allocate memory for SPI buffers\n");
+      return -ENOMEM;
     }
 
-  nerr("Error registering OA-TC6 network driver: %d\n", retval);
+  /* Reset the MAC-PHY */
 
-errout:
-  kmm_free(priv);
-  return retval;
+  if (oa_tc6_reset(priv))
+    {
+      nerr("Error: Resetting OA-TC6 device failed\n");
+      kmm_free(priv->txbuf);
+      kmm_free(priv->rxbuf);
+      return -EIO;
+    }
+
+  priv->ifstate = OA_TC6_IFSTATE_RESET;
+
+  return OK;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_register
+ *
+ * Description:
+ *   Register the OA-TC6 lower-half driver.
+ *
+ * Input Parameters:
+ *   oa_tc6_dev - reference to the initialized oa_tc6_driver_s structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+int oa_tc6_register(FAR struct oa_tc6_driver_s *oa_tc6_dev)
+{
+  return netdev_lower_register(&oa_tc6_dev->dev, NET_LL_ETHERNET);
 }

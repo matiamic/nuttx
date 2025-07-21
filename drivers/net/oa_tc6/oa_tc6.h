@@ -81,6 +81,10 @@ typedef uint32_t oa_tc6_regid_t;
 #define OA_TC6_STDCAP_MMS             0
 #define OA_TC6_STDCAP_ADDR            0x2U
 #define OA_TC6_STDCAP_REGID           OA_TC6_MAKE_REGID(OA_TC6_STDCAP_MMS, OA_TC6_STDCAP_ADDR)
+#define OA_TC6_STDCAP_CTC_MASK        BIT(7)
+#define OA_TC6_STDCAP_CTC_POS         7
+#define OA_TC6_STDCAP_MINCPS_MASK     GENMASK(2, 0)
+#define OA_TC6_STDCAP_MINCPS_POS      0
 
 #define OA_TC6_RESET_MMS              0
 #define OA_TC6_RESET_ADDR             0x3U
@@ -267,7 +271,6 @@ enum oa_tc6_ifstate_e
 enum oa_tc6_action_e
 {
   OA_TC6_ACTION_CONFIG,        /* Called before OA generic config         */
-  OA_TC6_ACTION_INIT_MAC_ADDR, /* Signal lower to initialize MAC address  */
   OA_TC6_ACTION_IFUP,          /* Called after the interface is enabled   */
   OA_TC6_ACTION_IFDOWN,        /* Called before the interface is disabled */
   OA_TC6_ACTION_EXST,          /* Called when EXST is detected in footer  */
@@ -297,6 +300,10 @@ struct oa_tc6_driver_s
 {
   struct netdev_lowerhalf_s dev;   /* Driver data visible by the net stack
                                     * (must be placed first)               */
+
+  uint8_t *txbuf;                  /* SPI transfer buffers                 */
+  uint8_t *rxbuf;
+
   mutex_t lock;                    /* Lock for data race prevention        */
   FAR struct spi_dev_s *spi;       /* The SPI device instance              */
   int irqnum;                      /* irq number of the interrupt pin      */
@@ -346,6 +353,11 @@ void oa_tc6_store_mac_addr(FAR struct oa_tc6_driver_s *priv,
 
 uint8_t oa_tc6_bitrev8(uint8_t byte);
 
+int oa_tc6_common_init(FAR struct oa_tc6_driver_s *priv,
+                       FAR struct spi_dev_s *spi,
+                       FAR struct oa_tc6_config_s *config);
+
+int oa_tc6_register(FAR struct oa_tc6_driver_s *oa_tc6_dev);
 
 #undef EXTERN
 #ifdef __cplusplus

@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <debug.h>
+#include <stdbool.h>
 
 #include <nuttx/spi/spi.h>
 #include <nuttx/irq.h>
@@ -57,12 +58,13 @@ static int esp_board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
 
 static struct oa_tc6_config_s g_esp_oa_tc6_config =
 {
-  .id            = SPIDEV_ETHERNET(0),
-  .frequency     = 20000000,
-  .chunk_size    = 64,
-  .interrupt_pin = 5,
-  .attach        = esp_board_oa_tc6_attach,
-  .enable        = esp_board_oa_tc6_enable,
+  .id                 = SPIDEV_ETHERNET(0),
+  .frequency          = 20000000,
+  .chunk_payload_size = 64,
+  .rx_cut_through     = true,
+  .interrupt_pin      = 5,
+  .attach             = esp_board_oa_tc6_attach,
+  .enable             = esp_board_oa_tc6_enable,
 };
 
 /****************************************************************************

@@ -33,7 +33,8 @@
  * Preprocessor Macros
  ****************************************************************************/
 
-#define OA_TC6_NCV7410_DEVTYPE 0xBC0189A1U
+#define OA_TC6_NCV7410_PHYID  0xBC0189A1U
+#define OA_TC6_NCN26010_PHYID 0xACABU // TBD
 
 /* Registers specific to the NCV7410 */
 
@@ -106,8 +107,8 @@ extern "C"
  * Public Function Prototypes
  ****************************************************************************/
 
-struct oa_tc6_driver_s *oa_tc6_ncv7410_initialize(struct spi_dev_s *spi,
-                                                  struct oa_tc6_config_s *config);
+int ncv7410_initialize(struct spi_dev_s *spi,
+                       struct oa_tc6_config_s *config);
 
 #undef EXTERN
 #ifdef __cplusplus
