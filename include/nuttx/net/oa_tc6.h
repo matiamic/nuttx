@@ -55,7 +55,8 @@ struct oa_tc6_config_s
   uint32_t id;
 
   uint32_t frequency;
-  uint8_t chunk_size;
+  uint8_t chunk_payload_size;
+  bool rx_cut_through;
 
   int interrupt_pin;
 

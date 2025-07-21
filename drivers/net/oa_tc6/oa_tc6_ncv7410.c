@@ -44,18 +44,19 @@
  * Private Types
  ****************************************************************************/
 
-struct oa_tc6_ncv7410_addrfilter
+struct ncv7410_addrfilter
 {
   uint8_t addrs[NCV_ADDR_FILTER_SLOTS][6]; /* Addrs that pass the filter    */
   uint8_t active;                          /* On/Off status of the slots
-                                              LSB represents the first slot */
+                                              LSB represents the first slot
+                                              1 pass if match, 0 inactive   */
 };
 
-struct oa_tc6_ncv7410_driver_s
+struct ncv7410_driver_s
 {
   struct oa_tc6_driver_s oa_tc6_dev;
 
-  struct oa_tc6_ncv7410_addrfilter filter;
+  struct ncv7410_addrfilter filter;
 };
 
 /*****************************************************************************
@@ -64,31 +65,31 @@ struct oa_tc6_ncv7410_driver_s
 
 /* Helper functions */
 
-static int oa_tc6_ncv7410_init_mac_addr(FAR struct oa_tc6_ncv7410_driver_s *priv);
-static int oa_tc6_ncv7410_config(FAR struct oa_tc6_ncv7410_driver_s *priv);
+static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv);
+static int ncv7410_config(FAR struct ncv7410_driver_s *priv);
 
 /* OA-TC6 lower callbacks */
 
-static int oa_tc6_ncv7410_action(FAR struct oa_tc6_driver_s *dev,
-                                 enum oa_tc6_action_e action);
-static int oa_tc6_ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
-                                 FAR const uint8_t *mac);
+static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
+                          enum oa_tc6_action_e action);
+static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
+                          FAR const uint8_t *mac);
 #ifdef CONFIG_NET_MCASTGROUP
-static int oa_tc6_ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
-                                FAR const uint8_t *mac);
+static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
+                         FAR const uint8_t *mac);
 #endif
 #ifdef CONFIG_NETDEV_IOCTL
-static int oa_tc6_ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
-                                unsigned long arg);
+static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
+                         unsigned long arg);
 #endif
 
 /*****************************************************************************
  * Private Functions
  ****************************************************************************/
 
-static int oa_tc6_ncv7410_init_mac_addr(FAR struct oa_tc6_ncv7410_driver_s *priv)
+static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv)
 {
-  FAR struct oa_tc6_driver_s *dev = (FAR struct oa_tc6_driver_s *)priv;
+  FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
 
   uint32_t regval;
   uint8_t  mac[6];
@@ -122,9 +123,9 @@ static int oa_tc6_ncv7410_init_mac_addr(FAR struct oa_tc6_ncv7410_driver_s *priv
   return OK;
 }
 
-static int oa_tc6_ncv7410_config(FAR struct oa_tc6_ncv7410_driver_s *priv)
+static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
 {
-  FAR struct oa_tc6_driver_s *dev = (FAR struct oa_tc6_driver_s *)priv;
+  FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
 
   uint32_t regval;
 
@@ -164,17 +165,15 @@ static int oa_tc6_ncv7410_config(FAR struct oa_tc6_ncv7410_driver_s *priv)
   return OK;
 }
 
-static int oa_tc6_ncv7410_action(FAR struct oa_tc6_driver_s *dev,
-                                 enum oa_tc6_action_e action)
+static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
+                          enum oa_tc6_action_e action)
 {
-  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
 
   switch (action)
     {
       case OA_TC6_ACTION_CONFIG:
-          return oa_tc6_ncv7410_config(priv);
-      case OA_TC6_ACTION_INIT_MAC_ADDR:
-          return oa_tc6_ncv7410_init_mac_addr(priv);
+          return ncv7410_config(priv);
       case OA_TC6_ACTION_IFUP:
       case OA_TC6_ACTION_IFDOWN:
       case OA_TC6_ACTION_EXST:
@@ -186,10 +185,10 @@ static int oa_tc6_ncv7410_action(FAR struct oa_tc6_driver_s *dev,
   return OK;
 }
 
-static int oa_tc6_ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
-                                 FAR const uint8_t *mac)
+static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
+                          FAR const uint8_t *mac)
 {
-  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
   uint8_t active = priv->filter.active;
   uint32_t regval;
   int i;
@@ -277,10 +276,10 @@ static int oa_tc6_ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
 }
 
 #ifdef CONFIG_NET_MCASTGROUP
-static int oa_tc6_ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
-                                FAR const uint8_t *mac)
+static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
+                         FAR const uint8_t *mac)
 {
-  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
   uint8_t active = priv->filter.active;
   uint32_t regval;
   int i;
@@ -320,10 +319,10 @@ static int oa_tc6_ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
 #endif
 
 #ifdef CONFIG_NETDEV_IOCTL
-static int oa_tc6_ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
-                                unsigned long arg)
+static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
+                         unsigned long arg)
 {
-  FAR struct oa_tc6_ncv7410_driver_s *priv = (FAR struct oa_tc6_ncv7410_driver_s *)dev;
+  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
 
   /* do something */
   return OK;
@@ -334,15 +333,15 @@ static int oa_tc6_ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
  * Private Data
  ****************************************************************************/
 
-static struct oa_tc6_ops_s g_oa_tc6_ncv7410_ops =
+static struct oa_tc6_ops_s g_ncv7410_ops =
 {
-  oa_tc6_ncv7410_action,
-  oa_tc6_ncv7410_addmac,
+  ncv7410_action,
+  ncv7410_addmac,
 #ifdef CONFIG_NET_MCASTGROUP
-  oa_tc6_ncv7410_rmmac,
+  ncv7410_rmmac,
 #endif
 #ifdef CONFIG_NETDEV_IOCTL
-  oa_tc6_ncv7410_ioctl
+  ncv7410_ioctl
 #endif
 };
 
@@ -350,30 +349,66 @@ static struct oa_tc6_ops_s g_oa_tc6_ncv7410_ops =
  * Public Functions
  ****************************************************************************/
 
-FAR struct oa_tc6_driver_s *oa_tc6_ncv7410_initialize(FAR struct spi_dev_s *spi,
-                                                      FAR struct oa_tc6_config_s *config)
+int ncv7410_initialize(FAR struct spi_dev_s *spi,
+                       FAR struct oa_tc6_config_s *config)
 {
-  FAR struct oa_tc6_ncv7410_driver_s *priv = NULL;
+  FAR struct ncv7410_driver_s *priv = NULL;
+  FAR struct oa_tc6_driver_s *dev;
+  int retval;
 
   priv = kmm_zalloc(sizeof(*priv));
   if (priv == NULL)
     {
-      nerr("Could not allocate data for oa_tc6_ncv7410_driver_s priv\n");
-      return NULL;
+      nerr("Error: Could not allocate memory for ncv7410_driver_s priv\n");
+      return -ENOMEM;
     }
 
-  /* Assign spi and config only if needed by the lan8650 init code, in any case it will be reassigned later in oa_tc6_initialize */
-
-  priv->oa_tc6_dev.spi = spi;
-  priv->oa_tc6_dev.config = config;
+  dev = &priv->oa_tc6_dev;
 
   /* Save the ops pointer */
 
-  priv->oa_tc6_dev.ops = &g_oa_tc6_ncv7410_ops;
+  dev->ops = &g_ncv7410_ops;
 
-  /* Do something with additional structure fields or with the device */
+  retval = oa_tc6_common_init(dev, spi, config);
+  if (retval)
+    {
+      nerr("Error: OA-TC6 common initialization failed\n");
+      goto errout;
+    }
 
-  /* Return */
+  /* Clear HDRE in STATUS0 (due to a bug in NCV7410) */
 
-  return &priv->oa_tc6_dev;
+  if (oa_tc6_write_reg(dev, OA_TC6_STATUS0_REGID,
+                       1 << OA_TC6_STATUS0_HDRE_POS))
+    {
+      nerr("Error: Clearing HDRE bit in STATUS0 failed\n");
+      retval = -EIO;
+      goto errout;
+    }
+
+  /* Init MAC address */
+
+  if (ncv7410_init_mac_addr(priv))
+    {
+      nerr("Error: Initialization of the MAC address failed\n");
+      retval = -EIO;
+      goto errout;
+    }
+
+  /* Do something with additional structure fields or with the device
+   * if needed
+   */
+
+  retval = oa_tc6_register(dev);
+  if (retval == OK)
+    {
+      ninfo("Successfully registered OA-TC6 network driver\n");
+      return OK;
+    }
+
+  nerr("Error: Registration of the OA-TC6 driver failed: %d\n", retval);
+
+errout:
+  kmm_free(priv);
+  return retval;
 }
