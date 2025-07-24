@@ -29,11 +29,11 @@ CSRCS += oa_tc6_ncv7410.c
 endif
 
 ifeq ($(CONFIG_NET_OA_TC6_NCN26010),y)
-CSRCS += oa_tc6_ncn26010.c
+CSRCS += oa_tc6_ncv7410.c
 endif
 
-ifeq ($(CONFIG_NET_OA_TC6_LAN8650),y)
-CSRCS += oa_tc6_lan8650.c
+ifeq ($(CONFIG_NET_OA_TC6_LAN865x),y)
+CSRCS += oa_tc6_lan865x.c
 endif
 
 DEPPATH += --dep-path net/oa_tc6
