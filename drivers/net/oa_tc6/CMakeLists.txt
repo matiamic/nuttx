@@ -23,16 +23,12 @@
 if(CONFIG_NET_OA_TC6)
   set(SRCS oa_tc6.c)
 
-  if(CONFIG_NET_OA_TC6_NCV7410)
+  if(CONFIG_NET_OA_TC6_NCV7410 OR CONFIG_NET_OA_TC6_NCN26010)
       list(APPEND SRCS oa_tc6_ncv7410.c)
   endif()
 
-  if(CONFIG_NET_OA_TC6_NCN26010)
-      list(APPEND SRCS oa_tc6_ncn26010.c)
-  endif()
-
-  if(CONFIG_NET_OA_TC6_LAN8650)
-      list(APPEND SRCS oa_tc6_lan8650.c)
+  if(CONFIG_NET_OA_TC6_LAN865x)
+      list(APPEND SRCS oa_tc6_lan865x.c)
   endif()
 
   target_sources(drivers PRIVATE ${SRCS})

@@ -18,7 +18,7 @@ config NET_OA_TC6_NCV7410
 config NET_OA_TC6_NCN26010
 	bool "Onsemi NCN26010 Support"
 
-config NET_OA_TC6_LAN8650
-	bool "Microchip LAN8650 Support"
+config NET_OA_TC6_LAN865x
+	bool "Microchip LAN865x Support"
 
 endif
