@@ -23,7 +23,7 @@
 if(CONFIG_NET_OA_TC6)
   set(SRCS oa_tc6.c)
 
-  if(CONFIG_NET_OA_TC6_NCV7410 OR CONFIG_NET_OA_TC6_NCN26010)
+  if(CONFIG_NET_OA_TC6_NCV7410)
       list(APPEND SRCS oa_tc6_ncv7410.c)
   endif()
 

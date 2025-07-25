@@ -13,10 +13,7 @@ menuconfig NET_OA_TC6
 if NET_OA_TC6
 
 config NET_OA_TC6_NCV7410
-	bool "Onsemi NCV7410 Support"
-
-config NET_OA_TC6_NCN26010
-	bool "Onsemi NCN26010 Support"
+	bool "Onsemi NCV7410 (NCN26010) Support"
 
 config NET_OA_TC6_LAN865x
 	bool "Microchip LAN865x Support"

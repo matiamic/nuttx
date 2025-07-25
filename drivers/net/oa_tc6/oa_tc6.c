@@ -46,12 +46,8 @@
 #include "oa_tc6_ncv7410.h"
 #endif
 
-#ifdef CONFIG_NET_OA_TC6_NCN26010
-#include "oa_tc6_ncn26010.h"
-#endif
-
-#ifdef CONFIG_NET_OA_TC6_LAN8650
-#include "oa_tc6_lan8650.h"
+#ifdef CONFIG_NET_OA_TC6_LAN865x
+#include "oa_tc6_lan865x.h"
 #endif
 
 #include "oa_tc6.h"
@@ -896,13 +892,13 @@ static int oa_tc6_init_by_id(FAR struct spi_dev_s *spi,
           ninfo("Info: Detected NCN26010\n");
           return ncv7410_initialize(spi, config);
 #endif
-#ifdef CONFIG_NET_OA_TC6_LAN8650
-      case OA_TC6_LAN8650_PHYID:
-          ninfo("Info: Detected LAN8650\n");
-          return oa_tc6_lan8650_initialize(spi, config);
+#ifdef CONFIG_NET_OA_TC6_LAN865x
+      case OA_TC6_LAN865x_PHYID:
+          ninfo("Info: Detected LAN865x\n");
+          return lan865x_initialize(spi, config);
 #endif
       default:
-          nerr("Error: Unknown PHYID %X. "
+          nerr("Error: Unknown PHYID 0x%08X. "
                "Is the support enabled in Kconfig? "
                "Does the revision match?\n", phyid);
           return -EINVAL;
