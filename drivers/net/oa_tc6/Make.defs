@@ -28,10 +28,6 @@ ifeq ($(CONFIG_NET_OA_TC6_NCV7410),y)
 CSRCS += oa_tc6_ncv7410.c
 endif
 
-ifeq ($(CONFIG_NET_OA_TC6_NCN26010),y)
-CSRCS += oa_tc6_ncv7410.c
-endif
-
 ifeq ($(CONFIG_NET_OA_TC6_LAN865x),y)
 CSRCS += oa_tc6_lan865x.c
 endif

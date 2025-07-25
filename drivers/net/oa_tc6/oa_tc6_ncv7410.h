@@ -1,5 +1,5 @@
 /****************************************************************************
- * drivers/net/oa_tc6/oa_tc6_lan8650.h
+ * drivers/net/oa_tc6/oa_tc6_ncv7410.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *

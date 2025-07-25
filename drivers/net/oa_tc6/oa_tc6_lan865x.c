@@ -1,5 +1,5 @@
 /****************************************************************************
- * drivers/net/oa/oa_tc6_ncv7410.h
+ * drivers/net/oa/oa_tc6_lan865x.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -31,32 +31,31 @@
 #include <nuttx/kmalloc.h>
 
 #include "oa_tc6.h"
-#include "oa_tc6_ncv7410.h"
+#include "oa_tc6_lan865x.h"
 
 /*****************************************************************************
  * Preprocessor Macros
  ****************************************************************************/
 
-#define NCV_ADDR_FILTER_SLOTS 4
-#define NCV_ADDR_FILTER_FULL  0xf
+#define LAN865x_ADDR_FILTER_SLOTS 4
+#define LAN865x_ADDR_FILTER_FULL  0xf
 
 /*****************************************************************************
  * Private Types
  ****************************************************************************/
 
-struct ncv7410_addrfilter
+struct lan865x_addrfilter
 {
-  uint8_t addrs[NCV_ADDR_FILTER_SLOTS][6]; /* Addrs that pass the filter    */
-  uint8_t active;                          /* On/Off status of the slots
-                                              LSB represents the first slot
-                                              1 pass if match, 0 inactive   */
+  uint8_t addrs[LAN865x_ADDR_FILTER_SLOTS][6]; /* Addrs that pass       */
+  uint8_t active;                              /* LSB is the first slot
+                                                  1 active, 0 inactive  */
 };
 
-struct ncv7410_driver_s
+struct lan865x_driver_s
 {
   struct oa_tc6_driver_s oa_tc6_dev;
 
-  struct ncv7410_addrfilter filter;
+  struct lan865x_addrfilter filter;
 };
 
 /*****************************************************************************
@@ -65,21 +64,24 @@ struct ncv7410_driver_s
 
 /* Helper functions */
 
-static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv);
-static int ncv7410_config(FAR struct ncv7410_driver_s *priv);
+static int lan865x_init_mac_addr(FAR struct lan865x_driver_s *priv);
+static int lan865x_config(FAR struct lan865x_driver_s *priv);
+static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv,
+                                 uint8_t addr, uint8_t mask,
+                                 FAR uint8_t *regval);
 
 /* OA-TC6 lower callbacks */
 
-static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
+static int lan865x_action(FAR struct oa_tc6_driver_s *dev,
                           enum oa_tc6_action_e action);
-static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
+static int lan865x_addmac(FAR struct oa_tc6_driver_s *dev,
                           FAR const uint8_t *mac);
 #ifdef CONFIG_NET_MCASTGROUP
-static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
+static int lan865x_rmmac(FAR struct oa_tc6_driver_s *dev,
                          FAR const uint8_t *mac);
 #endif
 #ifdef CONFIG_NETDEV_IOCTL
-static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
+static int lan865x_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
                          unsigned long arg);
 #endif
 
@@ -87,7 +89,7 @@ static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
  * Private Functions
  ****************************************************************************/
 
-static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv)
+static int lan865x_init_mac_addr(FAR struct lan865x_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
 
@@ -103,61 +105,125 @@ static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv)
   mac[1] = oa_tc6_bitrev8(regval >> 18);
   mac[2] = oa_tc6_bitrev8(regval >> 10);
 
-  if (oa_tc6_read_reg(dev, NCV_MACID1_REGID, &regval))
-    {
-      return ERROR;
-    }
+  /* TODO: Replace this with some smart MAC address generating mechanism */
 
-  mac[3] = regval;
-
-  if (oa_tc6_read_reg(dev, NCV_MACID0_REGID, &regval))
-    {
-      return ERROR;
-    }
-
-  mac[4] = regval >> 8;
-  mac[5] = regval;
+  mac[3] = (uint8_t)(LAN865x_MAC_ADDRESS_LOW >> 16);
+  mac[4] = (uint8_t)(LAN865x_MAC_ADDRESS_LOW >> 8);
+  mac[5] = (uint8_t)LAN865x_MAC_ADDRESS_LOW;
 
   oa_tc6_store_mac_addr(dev, mac);
 
   return OK;
 }
 
-static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
+static int lan865x_config(FAR struct lan865x_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
 
   uint32_t regval;
 
-  ninfo("Configuring NCV7410\n");
+  /* AN1760 appnote variables */
 
-  /* setup LEDs DIO0: txrx blink
-   *            DIO1: link enabled and link status up
-   */
+  /* int err; */
+  /* uint8_t value1; */
+  /* uint8_t value2; */
+  /* int8_t offset1; */
+  /* int8_t offset2; */
+  /* uint16_t cfgparam1; */
+  /* uint16_t cfgparam2; */
 
-  regval =   (NCV_DIO_TXRX_FUNC << NCV_DIO0_FUNC_POS)
-           | (NCV_DIO_LINK_CTRL_FUNC << NCV_DIO1_FUNC_POS)
-           | (1 << NCV_DIO0_OUT_VAL_POS)
-           | (1 << NCV_DIO1_OUT_VAL_POS);
+  ninfo("Configuring LAN865x\n");
 
-  if (oa_tc6_write_reg(dev, NCV_DIO_CONFIG_REGID, regval))
+  /* Perform the configuration procedure as outlined in the AN1760 appnote */
+
+  /* err = lan865x_indirect_read(priv, 0x04, 0x1f, &value1); */
+  /* if ((value1 & 0x10) != 0) */
+  /*   { */
+  /*     offset1 = (int8_t) ((uint8_t)value1 - 0x20); */
+  /*   } */
+  /* else */
+  /*   { */
+  /*     offset1 = (int8_t) value1; */
+  /*   } */
+
+  /* err |= lan865x_indirect_read(priv, 0x08, 0x1f, &value2); */
+  /* if ((value2 & 0x10) != 0) */
+  /*   { */
+  /*     offset2 = (int8_t) ((uint8_t)value2 - 0x20); */
+  /*   } */
+  /* else */
+  /*   { */
+  /*     offset2 = (int8_t) value2; */
+  /*   } */
+
+  /* cfgparam1 =   (uint16_t) (((9 + offset1) & 0x3f) << 10) */
+  /*             | (uint16_t) (((14 + offset1) & 0x3f) << 4) | 0x03; */
+  /* cfgparam2 = (uint16_t) (((40 + offset2) & 0x3f) << 10); */
+
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00d0), 0x3f31); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00e0), 0xc000); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0084), cfgparam1); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x008a), cfgparam2); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00e9), 0x9e50); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00f5), 0x1cf8); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00f4), 0xc020); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00f8), 0xb900); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00f9), 0x4e53); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0081), 0x0080); */
+
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0091), 0x9660); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x1, 0x0077), 0x0028); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0043), 0x00ff); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0044), 0xffff); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0045), 0x0000); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0053), 0x00ff); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0054), 0xffff); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0055), 0x0000); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0040), 0x0002); */
+  /* err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x0050), 0x0002); */
+
+  /* if (err) */
+  /*   { */
+  /*     return ERROR; */
+  /*   } */
+
+  /* Enable MAC TX, RX, disable MAC address filtering if promiscuous */
+
+  regval =   (1 << LAN865x_MAC_NCR_TXEN_POS)
+           | (1 << LAN865x_MAC_NCR_RXEN_POS);
+
+  if (oa_tc6_write_reg(dev, LAN865x_MAC_NCR_REGID, regval))
     {
       return ERROR;
     }
 
-  /* enable MAC TX, RX, enable transmit FCS computation on MAC,
-   * enable MAC address filtering if not promiscuous
-   */
+#ifdef CONFIG_NET_PROMISCUOUS
+  regval = 1 << LAN865x_MAC_NCFGR_CAF_POS;
 
-  regval =   (1 << NCV_MAC_CONTROL0_FCSA_POS)
-           | (1 << NCV_MAC_CONTROL0_TXEN_POS)
-           | (1 << NCV_MAC_CONTROL0_RXEN_POS);
+  /* Use read-modify-write so reserved bits are not overridden */
 
-#ifndef CONFIG_NET_PROMISCUOUS
-  regval |= 1 << NCV_MAC_CONTROL0_ADRF_POS;
+  if (oa_tc6_set_clear_bits(dev, LAN865x_MAC_NCFGR_REGID, regval, 0))
+    {
+      return ERROR;
+    }
 #endif
 
-  if (oa_tc6_write_reg(dev, NCV_MAC_CONTROL0_REGID, regval))
+  return OK;
+}
+
+static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv,
+                                 uint8_t addr, uint8_t mask,
+                                 FAR uint8_t *regval)
+{
+  FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
+  uint32_t regval32;
+  int err;
+
+  err = oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00D8), addr);
+  err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00DA), 0x2);
+  err |= oa_tc6_read_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00D9), &regval32);
+  *regval = (uint8_t)regval32 & mask;
+  if (err)
     {
       return ERROR;
     }
@@ -165,15 +231,15 @@ static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
   return OK;
 }
 
-static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
+static int lan865x_action(FAR struct oa_tc6_driver_s *dev,
                           enum oa_tc6_action_e action)
 {
-  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
+  FAR struct lan865x_driver_s *priv = (FAR struct lan865x_driver_s *)dev;
 
   switch (action)
     {
       case OA_TC6_ACTION_CONFIG:
-          return ncv7410_config(priv);
+          return lan865x_config(priv);
       case OA_TC6_ACTION_IFUP:
       case OA_TC6_ACTION_IFDOWN:
       case OA_TC6_ACTION_EXST:
@@ -185,17 +251,17 @@ static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
   return OK;
 }
 
-static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
+static int lan865x_addmac(FAR struct oa_tc6_driver_s *dev,
                           FAR const uint8_t *mac)
 {
-  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
+  FAR struct lan865x_driver_s *priv = (FAR struct lan865x_driver_s *)dev;
   uint8_t active = priv->filter.active;
   uint32_t regval;
   int i;
 
   /* Check if there is a free slot in the filter */
 
-  if (active == NCV_ADDR_FILTER_FULL)
+  if (active == LAN865x_ADDR_FILTER_FULL)
     {
       nerr("Error: The address filter is already full\n");
       return -EINVAL;
@@ -203,19 +269,19 @@ static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
 
   /* Check if the addr is already included */
 
-  for (i = 0; i < NCV_ADDR_FILTER_SLOTS; i++)
+  for (i = 0; i < LAN865x_ADDR_FILTER_SLOTS; i++)
     {
       if (((active >> i) & 1) && memcmp(priv->filter.addrs[i], mac, 6) == 0)
         {
           nerr("Error: The provided address is already in the slot %d "
-               "of the filter\n", i);
+               "of the filter\n", i + 1);
           return -EINVAL;
         }
     }
 
   /* Find the first free slot */
 
-  for (i = 0; i < NCV_ADDR_FILTER_SLOTS; i++)
+  for (i = 0; i < LAN865x_ADDR_FILTER_SLOTS; i++)
     {
       if (((active >> i) & 1) == 0)
         {
@@ -225,40 +291,25 @@ static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
 
   /* Write to the MAC-PHY */
 
-  regval =   (mac[2] << 24)
-           | (mac[3] << 16)
-           | (mac[4] << 8)
-           | (mac[5]);
+  regval =   (mac[3] << 24)
+           | (mac[2] << 16)
+           | (mac[1] << 8)
+           | (mac[0]);
 
-  if (oa_tc6_write_reg(dev, NCV_ADDRFILTL_REGID(i), regval))
+  /* Must write address register (i + 1) as in the case of LAN865x
+   * the MAC address filter registers are numbered from 1
+   */
+
+  if (oa_tc6_write_reg(dev, LAN865x_MAC_SAB_REGID(i + 1), regval))
     {
       nerr("Error: Error during SPI transmission\n");
       return -EIO;
     }
 
-  regval =   (1 << 31)  /* Enable filter */
-           | (mac[0] << 8)
-           | (mac[1]);
+  regval =   (mac[5] << 8)
+           | (mac[4]);
 
-  if (oa_tc6_write_reg(dev, NCV_ADDRFILTH_REGID(i), regval))
-    {
-      nerr("Error: Error during SPI transmission\n");
-      return -EIO;
-    }
-
-  /* All fields are significant */
-
-  regval = 0xffffffff;
-
-  if (oa_tc6_write_reg(dev, NCV_ADDRMASKL_REGID(i), regval))
-    {
-      nerr("Error: Error during SPI transmission\n");
-      return -EIO;
-    }
-
-  regval = 0x0000ffff;
-
-  if (oa_tc6_write_reg(dev, NCV_ADDRMASKH_REGID(i), regval))
+  if (oa_tc6_write_reg(dev, LAN865x_MAC_SAT_REGID(i + 1), regval))
     {
       nerr("Error: Error during SPI transmission\n");
       return -EIO;
@@ -270,39 +321,36 @@ static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
   active |= 1 << i;
   priv->filter.active = active;
 
-  ninfo("Info: Adding new MAC address to the filter slot %d OK\n", i);
+  ninfo("Info: Adding new MAC address to the filter slot %d OK\n", i + 1);
 
   return OK;
 }
 
 #ifdef CONFIG_NET_MCASTGROUP
-static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
+static int lan865x_rmmac(FAR struct oa_tc6_driver_s *dev,
                          FAR const uint8_t *mac)
 {
-  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
+  FAR struct lan865x_driver_s *priv = (FAR struct lan865x_driver_s *)dev;
   uint8_t active = priv->filter.active;
-  uint32_t regval;
   int i;
 
-  for (i = 0; i < NCV_ADDR_FILTER_SLOTS; i++)
+  for (i = 0; i < LAN865x_ADDR_FILTER_SLOTS; i++)
     {
       if (((active >> i) & 1) && memcmp(priv->filter.addrs[i], mac, 6) == 0)
         {
           break;
         }
 
-      if (i == NCV_ADDR_FILTER_SLOTS - 1)
+      if (i == LAN865x_ADDR_FILTER_SLOTS - 1)
         {
           nerr("Error: The address is not present in the filter\n");
           return -EINVAL;
         }
     }
 
-  /* Clear the ADDRFILT0H, where enable flag is located */
+  /* Filter is disabled by writing the appropriate MAC_SAB register */
 
-  regval = 0;
-
-  if (oa_tc6_write_reg(dev, NCV_ADDRFILTH_REGID(i), regval))
+  if (oa_tc6_write_reg(dev, LAN865x_MAC_SAB_REGID(i + 1), 0))
     {
       nerr("Error: Error during SPI transmission\n");
       return -EIO;
@@ -312,17 +360,17 @@ static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
   active &= ~(1 << i);
   priv->filter.active = active;
 
-  ninfo("Info: Removing the MAC address from the filter slot %d OK\n", i);
+  ninfo("Info: Removing the MAC address from the filter slot %d OK\n", i + 1);
 
   return OK;
 }
 #endif
 
 #ifdef CONFIG_NETDEV_IOCTL
-static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
+static int lan865x_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
                          unsigned long arg)
 {
-  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
+  FAR struct lan865x_driver_s *priv = (FAR struct lan865x_driver_s *)dev;
 
   /* do something */
   return OK;
@@ -333,15 +381,15 @@ static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
  * Private Data
  ****************************************************************************/
 
-static struct oa_tc6_ops_s g_ncv7410_ops =
+static struct oa_tc6_ops_s g_lan865x_ops =
 {
-  ncv7410_action,
-  ncv7410_addmac,
+  lan865x_action,
+  lan865x_addmac,
 #ifdef CONFIG_NET_MCASTGROUP
-  ncv7410_rmmac,
+  lan865x_rmmac,
 #endif
 #ifdef CONFIG_NETDEV_IOCTL
-  ncv7410_ioctl
+  lan865x_ioctl
 #endif
 };
 
@@ -349,17 +397,17 @@ static struct oa_tc6_ops_s g_ncv7410_ops =
  * Public Functions
  ****************************************************************************/
 
-int ncv7410_initialize(FAR struct spi_dev_s *spi,
+int lan865x_initialize(FAR struct spi_dev_s *spi,
                        FAR struct oa_tc6_config_s *config)
 {
-  FAR struct ncv7410_driver_s *priv = NULL;
+  FAR struct lan865x_driver_s *priv = NULL;
   FAR struct oa_tc6_driver_s *dev;
   int retval;
 
   priv = kmm_zalloc(sizeof(*priv));
   if (priv == NULL)
     {
-      nerr("Error: Could not allocate memory for ncv7410_driver_s priv\n");
+      nerr("Error: Could not allocate memory for lan865x_driver_s priv\n");
       return -ENOMEM;
     }
 
@@ -367,7 +415,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi,
 
   /* Save the ops pointer */
 
-  dev->ops = &g_ncv7410_ops;
+  dev->ops = &g_lan865x_ops;
 
   retval = oa_tc6_common_init(dev, spi, config);
   if (retval)
@@ -376,19 +424,9 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi,
       goto errout;
     }
 
-  /* Clear HDRE in STATUS0 (due to a bug in NCV7410) */
-
-  if (oa_tc6_write_reg(dev, OA_TC6_STATUS0_REGID,
-                       1 << OA_TC6_STATUS0_HDRE_POS))
-    {
-      nerr("Error: Clearing HDRE bit in STATUS0 failed\n");
-      retval = -EIO;
-      goto errout;
-    }
-
   /* Init MAC address */
 
-  if (ncv7410_init_mac_addr(priv))
+  if (lan865x_init_mac_addr(priv))
     {
       nerr("Error: Initialization of the MAC address failed\n");
       retval = -EIO;
@@ -399,14 +437,17 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi,
    * if needed
    */
 
+  /* Register */
+
   retval = oa_tc6_register(dev);
   if (retval == OK)
     {
-      ninfo("Successfully registered OA-TC6 network driver\n");
+      ninfo("Successfully registered OA-TC6 LAN865x network driver\n");
       return OK;
     }
 
-  nerr("Error: Registration of the OA-TC6 driver failed: %d\n", retval);
+  nerr("Error: Registration of the OA-TC6 LAN865x driver failed: %d\n",
+       retval);
 
 errout:
   kmm_free(priv);

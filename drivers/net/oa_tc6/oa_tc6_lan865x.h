@@ -1,5 +1,5 @@
 /****************************************************************************
- * drivers/net/oa_tc6/oa_tc6_lan8650.h
+ * drivers/net/oa_tc6/oa_tc6_lan865x.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,8 +20,8 @@
  *
  ****************************************************************************/
 
-#ifndef __DRIVERS_NET_OA_TC6_NCV7410_H
-#define __DRIVERS_NET_OA_TC6_NCV7410_H
+#ifndef __DRIVERS_NET_OA_TC6_LAN865x_H
+#define __DRIVERS_NET_OA_TC6_LAN865x_H
 
 /*****************************************************************************
  * Included Files
@@ -33,67 +33,30 @@
  * Preprocessor Macros
  ****************************************************************************/
 
-#define OA_TC6_NCV7410_PHYID  0xBC0189A1U
-#define OA_TC6_NCN26010_PHYID 0xACABU // TBD
+#define OA_TC6_LAN865x_PHYID 0x0007C1B4U
 
-/* Registers specific to the NCV7410 */
+#define LAN865x_MAC_ADDRESS_LOW 0x00ABCDEFU
 
-#define NCV_MAC_CONTROL0_MMS      1
-#define NCV_MAC_CONTROL0_ADDR     0x0U
-#define NCV_MAC_CONTROL0_REGID    OA_TC6_MAKE_REGID(NCV_MAC_CONTROL0_MMS, NCV_MAC_CONTROL0_ADDR)
-#define NCV_MAC_CONTROL0_ADRF_POS 16
-#define NCV_MAC_CONTROL0_FCSA_POS 8
-#define NCV_MAC_CONTROL0_TXEN_POS 1
-#define NCV_MAC_CONTROL0_RXEN_POS 0
+/* Registers specific to the LAN865x */
 
-#define NCV_ADDRFILT0L_MMS        1
-#define NCV_ADDRFILT0L_ADDR       0x10U
-#define NCV_ADDRFILT0L_REGID      OA_TC6_MAKE_REGID(NCV_ADDRFILT0L_MMS, NCV_ADDRFILT0L_ADDR)
+#define LAN865x_MAC_NCR_MMS         1
+#define LAN865x_MAC_NCR_ADDR        0x0U
+#define LAN865x_MAC_NCR_REGID       OA_TC6_MAKE_REGID(LAN865x_MAC_NCR_MMS, LAN865x_MAC_NCR_ADDR)
+#define LAN865x_MAC_NCR_TXEN_POS    3
+#define LAN865x_MAC_NCR_RXEN_POS    2
 
-#define NCV_ADDRFILT0H_MMS        1
-#define NCV_ADDRFILT0H_ADDR       0x11U
-#define NCV_ADDRFILT0H_REGID      OA_TC6_MAKE_REGID(NCV_ADDRFILT0H_MMS, NCV_ADDRFILT0H_ADDR)
+#define LAN865x_MAC_NCFGR_MMS       1
+#define LAN865x_MAC_NCFGR_ADDR      0x1U
+#define LAN865x_MAC_NCFGR_REGID     OA_TC6_MAKE_REGID(LAN865x_MAC_NCFGR_MMS, LAN865x_MAC_NCFGR_ADDR)
+#define LAN865x_MAC_NCFGR_EFRHD_POS 25
+#define LAN865x_MAC_NCFGR_CAF_POS   4
 
-#define NCV_ADDRMASK0L_MMS        1
-#define NCV_ADDRMASK0L_ADDR       0x20U
-#define NCV_ADDRMASK0L_REGID      OA_TC6_MAKE_REGID(NCV_ADDRMASK0L_MMS, NCV_ADDRMASK0L_ADDR)
+#define LAN865x_MAC_SAB1_MMS        1
+#define LAN865x_MAC_SAB1_ADDR       0x22U
+#define LAN865x_MAC_SAB1_REGID      OA_TC6_MAKE_REGID(LAN865x_MAC_SAB1_MMS, LAN865x_MAC_SAB1_ADDR)
 
-#define NCV_ADDRMASK0H_MMS        1
-#define NCV_ADDRMASK0H_ADDR       0x21U
-#define NCV_ADDRMASK0H_REGID      OA_TC6_MAKE_REGID(NCV_ADDRMASK0H_MMS, NCV_ADDRMASK0H_ADDR)
-
-#define NCV_ADDRFILTL_REGID(i)    OA_TC6_MAKE_REGID(NCV_ADDRFILT0L_MMS, NCV_ADDRFILT0L_ADDR + 4 * i)
-#define NCV_ADDRFILTH_REGID(i)    OA_TC6_MAKE_REGID(NCV_ADDRFILT0H_MMS, NCV_ADDRFILT0H_ADDR + 4 * i)
-#define NCV_ADDRMASKL_REGID(i)    OA_TC6_MAKE_REGID(NCV_ADDRMASK0L_MMS, NCV_ADDRMASK0L_ADDR + 4 * i)
-#define NCV_ADDRMASKH_REGID(i)    OA_TC6_MAKE_REGID(NCV_ADDRMASK0H_MMS, NCV_ADDRMASK0H_ADDR + 4 * i)
-
-#define NCV_DIO_CONFIG_MMS        12
-#define NCV_DIO_CONFIG_ADDR       0x0012U
-#define NCV_DIO_CONFIG_REGID      OA_TC6_MAKE_REGID(NCV_DIO_CONFIG_MMS, NCV_DIO_CONFIG_ADDR)
-#define NCV_DIO_CONFIG_DEF        0x6060
-#define NCV_DIO0_FUNC_POS         1
-#define NCV_DIO1_FUNC_POS         9
-#define NCV_DIO0_OUT_VAL_POS      0
-#define NCV_DIO1_OUT_VAL_POS      8
-#define NCV_DIO_TRISTATE_FUNC     0x0
-#define NCV_DIO_GPIO_FUNC         0x1
-#define NCV_DIO_SFD_TX_FUNC       0x2
-#define NCV_DIO_SFD_RX_FUNC       0x3
-#define NCV_DIO_LINK_CTRL_FUNC    0x4
-#define NCV_DIO_SFD_TXRX_FUNC     0xB
-#define NCV_DIO_TXRX_FUNC         0xF
-
-#define NCV_MACID0_MMS            12
-#define NCV_MACID0_ADDR           0x1002U
-#define NCV_MACID0_REGID          OA_TC6_MAKE_REGID(NCV_MACID0_MMS, NCV_MACID0_ADDR)
-#define NCV_MACID0_MASK           GENMASK(15, 0)
-#define NCV_MACID0_POS            0
-
-#define NCV_MACID1_MMS            12
-#define NCV_MACID1_ADDR           0x1003U
-#define NCV_MACID1_REGID          OA_TC6_MAKE_REGID(NCV_MACID1_MMS, NCV_MACID1_ADDR)
-#define NCV_MACID1_MASK           GENMASK(7, 0)
-#define NCV_MACID1_POS            0
+#define LAN865x_MAC_SAB_REGID(i)    OA_TC6_MAKE_REGID(LAN865x_MAC_SAB1_MMS, LAN865x_MAC_SAB1_ADDR + 2 * (i - 1))
+#define LAN865x_MAC_SAT_REGID(i)    OA_TC6_MAKE_REGID(LAN865x_MAC_SAB1_MMS, LAN865x_MAC_SAB1_ADDR + 2 * (i - 1) + 1)
 
 #ifdef __cplusplus
 #define EXTERN extern "C"
@@ -107,7 +70,7 @@ extern "C"
  * Public Function Prototypes
  ****************************************************************************/
 
-int ncv7410_initialize(struct spi_dev_s *spi,
+int lan865x_initialize(struct spi_dev_s *spi,
                        struct oa_tc6_config_s *config);
 
 #undef EXTERN
@@ -115,4 +78,4 @@ int ncv7410_initialize(struct spi_dev_s *spi,
 }
 #endif
 
-#endif /* __DRIVERS_NET_OA_TC6_NCV7410_H */
+#endif /* __DRIVERS_NET_OA_TC6_LAN865x_H */
