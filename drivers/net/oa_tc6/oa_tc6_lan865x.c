@@ -66,9 +66,9 @@ struct lan865x_driver_s
 
 static int lan865x_init_mac_addr(FAR struct lan865x_driver_s *priv);
 static int lan865x_config(FAR struct lan865x_driver_s *priv);
-static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv,
-                                 uint8_t addr, uint8_t mask,
-                                 FAR uint8_t *regval);
+/* static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv, */
+/*                                  uint8_t addr, uint8_t mask, */
+/*                                  FAR uint8_t *regval); */
 
 /* OA-TC6 lower callbacks */
 
@@ -211,25 +211,25 @@ static int lan865x_config(FAR struct lan865x_driver_s *priv)
   return OK;
 }
 
-static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv,
-                                 uint8_t addr, uint8_t mask,
-                                 FAR uint8_t *regval)
-{
-  FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
-  uint32_t regval32;
-  int err;
+/* static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv, */
+/*                                  uint8_t addr, uint8_t mask, */
+/*                                  FAR uint8_t *regval) */
+/* { */
+/*   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev; */
+/*   uint32_t regval32; */
+/*   int err; */
 
-  err = oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00D8), addr);
-  err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00DA), 0x2);
-  err |= oa_tc6_read_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00D9), &regval32);
-  *regval = (uint8_t)regval32 & mask;
-  if (err)
-    {
-      return ERROR;
-    }
+/*   err = oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00D8), addr); */
+/*   err |= oa_tc6_write_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00DA), 0x2); */
+/*   err |= oa_tc6_read_reg(dev, OA_TC6_MAKE_REGID(0x4, 0x00D9), &regval32); */
+/*   *regval = (uint8_t)regval32 & mask; */
+/*   if (err) */
+/*     { */
+/*       return ERROR; */
+/*     } */
 
-  return OK;
-}
+/*   return OK; */
+/* } */
 
 static int lan865x_action(FAR struct oa_tc6_driver_s *dev,
                           enum oa_tc6_action_e action)
