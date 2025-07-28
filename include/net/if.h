@@ -161,7 +161,7 @@ struct mii_ioctl_notify_s
 };
 
 /* Structure passed to read from or write to the MII/PHY management
- * interface via the SIOCxMIIREG ioctl commands.
+ * interface via the SIOCxMIIREG and SIOCxMMDREG ioctl commands.
  */
 
 struct mii_ioctl_data_s
@@ -170,6 +170,11 @@ struct mii_ioctl_data_s
   uint16_t reg_num;     /* PHY register address */
   uint16_t val_in;      /* PHY input data */
   uint16_t val_out;     /* PHY output data */
+  uint16_t addr;        /* If this structure is used with the SIOCxMMDREG
+                           the reg_num field addresses MMD and addr field is
+                           the address into the MMD's address space.
+                           Otherwise this field is ignored.
+                         */
 };
 
 /* Structure passed to get or set the CAN bitrate

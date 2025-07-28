@@ -45,6 +45,10 @@
  * Pre-processor Definitions
  ****************************************************************************/
 
+/* Device-specific driver ioctl return value if the cmd is not implemented */
+
+#define OA_TC6_IOCTL_CMD_NOT_IMPLEMENTED 1
+
 /* NuttX SPI mode number for SPI config as defined in OPEN Alliance TC6 */
 
 #define OA_TC6_SPI_MODE 0
@@ -65,11 +69,11 @@ typedef uint32_t oa_tc6_regid_t;
 #define OA_TC6_REGID_GET_ADDR(regid) ((uint16_t)(regid & 0xFFFF))
 
 #define OA_TC6_IDVER_MMS              0
-#define OA_TC6_IDVER_ADDR             0x0U
+#define OA_TC6_IDVER_ADDR             0x0000U
 #define OA_TC6_IDVER_REGID            OA_TC6_MAKE_REGID(OA_TC6_IDVER_MMS, OA_TC6_IDVER_ADDR)
 
 #define OA_TC6_PHYID_MMS              0
-#define OA_TC6_PHYID_ADDR             0x1U
+#define OA_TC6_PHYID_ADDR             0x0001U
 #define OA_TC6_PHYID_REGID            OA_TC6_MAKE_REGID(OA_TC6_PHYID_MMS, OA_TC6_PHYID_ADDR)
 #define OA_TC6_PHYID_OUI_MASK         GENMASK(31, 10)
 #define OA_TC6_PHYID_OUI_POS          10
@@ -79,21 +83,23 @@ typedef uint32_t oa_tc6_regid_t;
 #define OA_TC6_PHYID_REV_POS          0
 
 #define OA_TC6_STDCAP_MMS             0
-#define OA_TC6_STDCAP_ADDR            0x2U
+#define OA_TC6_STDCAP_ADDR            0x0002U
 #define OA_TC6_STDCAP_REGID           OA_TC6_MAKE_REGID(OA_TC6_STDCAP_MMS, OA_TC6_STDCAP_ADDR)
+#define OA_TC6_STDCAP_DPRAC_MASK      BIT(8)
+#define OA_TC6_STDCAP_DPRAC_POS       8
 #define OA_TC6_STDCAP_CTC_MASK        BIT(7)
 #define OA_TC6_STDCAP_CTC_POS         7
 #define OA_TC6_STDCAP_MINCPS_MASK     GENMASK(2, 0)
 #define OA_TC6_STDCAP_MINCPS_POS      0
 
 #define OA_TC6_RESET_MMS              0
-#define OA_TC6_RESET_ADDR             0x3U
+#define OA_TC6_RESET_ADDR             0x0003U
 #define OA_TC6_RESET_REGID            OA_TC6_MAKE_REGID(OA_TC6_RESET_MMS, OA_TC6_RESET_ADDR)
 #define OA_TC6_RESET_SWRESET_MASK     BIT(0)
 #define OA_TC6_RESET_SWRESET_POS      0
 
 #define OA_TC6_CONFIG0_MMS            0
-#define OA_TC6_CONFIG0_ADDR           0x4U
+#define OA_TC6_CONFIG0_ADDR           0x0004U
 #define OA_TC6_CONFIG0_REGID          OA_TC6_MAKE_REGID(OA_TC6_CONFIG0_MMS, OA_TC6_CONFIG0_ADDR)
 #define OA_TC6_CONFIG0_SYNC_MASK      BIT(15)
 #define OA_TC6_CONFIG0_SYNC_POS       15
@@ -125,7 +131,7 @@ typedef uint32_t oa_tc6_regid_t;
 #define OA_TC6_CONFIG0_CPS_8          3
 
 #define OA_TC6_STATUS0_MMS            0
-#define OA_TC6_STATUS0_ADDR           0x8U
+#define OA_TC6_STATUS0_ADDR           0x0008U
 #define OA_TC6_STATUS0_REGID          OA_TC6_MAKE_REGID(OA_TC6_STATUS0_MMS, OA_TC6_STATUS0_ADDR)
 #define OA_TC6_STATUS0_RESETC_MASK    BIT(6)
 #define OA_TC6_STATUS0_RESETC_POS     6
@@ -133,11 +139,11 @@ typedef uint32_t oa_tc6_regid_t;
 #define OA_TC6_STATUS0_HDRE_POS       5
 
 #define OA_TC6_BUFSTS_MMS             0
-#define OA_TC6_BUFSTS_ADDR            0xBU
+#define OA_TC6_BUFSTS_ADDR            0x000BU
 #define OA_TC6_BUFSTS_REGID           OA_TC6_MAKE_REGID(OA_TC6_BUFSTS_MMS, OA_TC6_BUFSTS_ADDR)
 
 #define OA_TC6_IMSK0_MMS              0
-#define OA_TC6_IMSK0_ADDR             0xCU
+#define OA_TC6_IMSK0_ADDR             0x000CU
 #define OA_TC6_IMSK0_REGID            OA_TC6_MAKE_REGID(OA_TC6_IMSK0_MMS, OA_TC6_IMSK0_ADDR)
 #define OA_TC6_IMSK0_DEF              0x1FBFU
 #define OA_TC6_IMSK0_PHYINTM_MASK     BIT(7)
@@ -153,6 +159,29 @@ typedef uint32_t oa_tc6_regid_t;
 #define OA_TC6_PHY_STATUS_MMS         0
 #define OA_TC6_PHY_STATUS_ADDR        0xFF01U
 #define OA_TC6_PHY_STATUS_REGID       OA_TC6_MAKE_REGID(OA_TC6_PHY_STATUS_MMS, OA_TC6_PHY_STATUS_ADDR)
+
+/* MDIO */
+
+#define OA_TC6_MII_BASE_MMS           0
+#define OA_TC6_MII_BASE_ADDR          0xFF00U
+
+#define OA_TC6_MMD_29_BASE_MMS        0
+#define OA_TC6_MMD_29_BASE_ADDR       0xFF20U
+
+#define OA_TC6_MMD_3_BASE_MMS         2
+#define OA_TC6_MMD_3_BASE_ADDR        0x0000U
+
+#define OA_TC6_MMD_1_BASE_MMS         3
+#define OA_TC6_MMD_1_BASE_ADDR        0x0000U
+
+#define OA_TC6_MMD_31_BASE_MMS        4
+#define OA_TC6_MMD_31_BASE_ADDR       0x0000U
+
+#define OA_TC6_MMD_7_BASE_MMS         5
+#define OA_TC6_MMD_7_BASE_ADDR        0x0000U
+
+#define OA_TC6_MMD_13_BASE_MMS        6
+#define OA_TC6_MMD_13_BASE_ADDR       0x0000U
 
 /* OA Data Transaction and Control Transaction protocols bitfields */
 

@@ -38,6 +38,8 @@
 #include <nuttx/wqueue.h>
 #include <nuttx/mutex.h>
 
+#include <nuttx/net/ioctl.h>
+
 #include <nuttx/net/netdev_lowerhalf.h>
 
 #include <nuttx/net/oa_tc6.h>
@@ -136,10 +138,22 @@ static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv);
 
-
 /* Driver buffer manipulation */
 
 static void oa_tc6_reset_driver_buffers(FAR struct oa_tc6_driver_s *priv);
+
+/* MDIO */
+
+static int oa_tc6_read_mii(FAR struct oa_tc6_driver_s *priv,
+                           FAR struct mii_ioctl_data_s *req);
+static int oa_tc6_write_mii(FAR struct oa_tc6_driver_s *priv,
+                            FAR struct mii_ioctl_data_s *req);
+static int oa_tc6_get_mmd_base(uint8_t mmd,
+                               FAR uint8_t *mms, FAR uint16_t *addr);
+static int oa_tc6_read_mmd(FAR struct oa_tc6_driver_s *priv,
+                           FAR struct mii_ioctl_data_s *req);
+static int oa_tc6_write_mmd(FAR struct oa_tc6_driver_s *priv,
+                            FAR struct mii_ioctl_data_s *req);
 
 /* Debug */
 
@@ -1071,6 +1085,8 @@ static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv)
 
   /* Enable RX and TX in PHY */
 
+  // beware: LCTL is not standard and is NCV7410 special
+  // LAN865x does not have this feature at all
   setbits = (1 << OA_TC6_PHY_CONTROL_LCTL_POS);
 
   if (oa_tc6_set_clear_bits(priv, OA_TC6_PHY_CONTROL_REGID, setbits, 0))
@@ -1175,6 +1191,195 @@ static void oa_tc6_reset_driver_buffers(FAR struct oa_tc6_driver_s *priv)
   priv->rx_pkt_idx = 0;
   priv->tx_pkt_len = 0;
   priv->rx_pkt_ready = false;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_read_mii
+ *
+ * Description:
+ *   Read the MII register from the MAC-PHY into the provided
+ *   mii_ioctl_data_s structure.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   req  - pointer to the mii_ioctl_data_s structure with addr and dest
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_read_mii(FAR struct oa_tc6_driver_s *priv,
+                           FAR struct mii_ioctl_data_s *req)
+{
+  uint32_t regval;
+  oa_tc6_regid_t regid =
+    OA_TC6_MAKE_REGID(OA_TC6_MII_BASE_MMS,
+                      OA_TC6_MII_BASE_ADDR + (req->reg_num & 0x1F));
+  if (oa_tc6_read_reg(priv, regid, &regval))
+    {
+      return -EIO;
+    }
+
+  req->val_out = (uint16_t)regval;
+
+  return OK;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_write_mii
+ *
+ * Description:
+ *   Write the MII register from the the provided mii_ioctl_data_s structure
+ *   into the MAC-PHY.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   req  - pointer to the mii_ioctl_data_s structure with addr and dest
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_write_mii(FAR struct oa_tc6_driver_s *priv,
+                            FAR struct mii_ioctl_data_s *req)
+{
+  uint32_t regval = req->val_in;
+  oa_tc6_regid_t regid =
+    OA_TC6_MAKE_REGID(OA_TC6_MII_BASE_MMS,
+                      OA_TC6_MII_BASE_ADDR + (req->reg_num & 0x1F));
+  if (oa_tc6_write_reg(priv, regid, regval))
+    {
+      return -EIO;
+    }
+
+  return OK;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_get_mmd_base
+ *
+ * Description:
+ *   Get the MMS and the base address of the specified MMD within the
+ *   MAC-PHY memory.
+ *
+ * Input Parameters:
+ *   mmd  - the MMD to be given base to
+ *   mms  - pointer to the destination of the MMS of the given MMD
+ *   addr - pointer to the destination of the MMD's base address in the MMS
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_get_mmd_base(uint8_t mmd,
+                               FAR uint8_t *mms, FAR uint16_t *addr)
+{
+  switch(mmd)
+    {
+      case 1:
+          *mms  = OA_TC6_MMD_1_BASE_MMS;
+          *addr = OA_TC6_MMD_1_BASE_ADDR;
+          return OK;
+      case 3:
+          *mms  = OA_TC6_MMD_3_BASE_MMS;
+          *addr = OA_TC6_MMD_3_BASE_ADDR;
+          return OK;
+      case 7:
+          *mms  = OA_TC6_MMD_7_BASE_MMS;
+          *addr = OA_TC6_MMD_7_BASE_ADDR;
+          return OK;
+      case 13:
+          *mms  = OA_TC6_MMD_13_BASE_MMS;
+          *addr = OA_TC6_MMD_13_BASE_ADDR;
+          return OK;
+      case 29:
+          *mms  = OA_TC6_MMD_29_BASE_MMS;
+          *addr = OA_TC6_MMD_29_BASE_ADDR;
+          return OK;
+      case 31:
+          *mms  = OA_TC6_MMD_31_BASE_MMS;
+          *addr = OA_TC6_MMD_31_BASE_ADDR;
+          return OK;
+    }
+  return ERROR;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_read_mmd
+ *
+ * Description:
+ *   Read the MMD register from the MAC-PHY into the provided
+ *   mii_ioctl_data_s structure.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   req  - pointer to the mii_ioctl_data_s structure with addr and dest
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_read_mmd(FAR struct oa_tc6_driver_s *priv,
+                           FAR struct mii_ioctl_data_s *req)
+{
+  uint32_t regval;
+  uint8_t mms;
+  uint16_t base_addr;
+  if (oa_tc6_get_mmd_base(req->reg_num, &mms, &base_addr))
+    {
+      return -EINVAL;
+    }
+
+  oa_tc6_regid_t regid =
+    OA_TC6_MAKE_REGID(mms, base_addr + req->addr);
+  if (oa_tc6_read_reg(priv, regid, &regval))
+    {
+      return -EIO;
+    }
+
+  req->val_out = (uint16_t)regval;
+
+  return OK;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_write_mmd
+ *
+ * Description:
+ *   Write the MMD register from the the provided mii_ioctl_data_s structure
+ *   into the MAC-PHY.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   req  - pointer to the mii_ioctl_data_s structure with addr and dest
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_write_mmd(FAR struct oa_tc6_driver_s *priv,
+                            FAR struct mii_ioctl_data_s *req)
+{
+  uint32_t regval = req->val_in;
+  uint8_t mms;
+  uint16_t base_addr;
+  if (oa_tc6_get_mmd_base(req->reg_num, &mms, &base_addr))
+    {
+      return -EINVAL;
+    }
+  oa_tc6_regid_t regid =
+    OA_TC6_MAKE_REGID(mms, base_addr + req->addr);
+  if (oa_tc6_write_reg(priv, regid, regval))
+    {
+      return -EIO;
+    }
+
+  return OK;
 }
 
 /****************************************************************************
@@ -1473,20 +1678,50 @@ static int oa_tc6_ioctl(FAR struct netdev_lowerhalf_s *dev, int cmd,
                         unsigned long arg)
 {
   FAR struct oa_tc6_driver_s *priv = (FAR struct oa_tc6_driver_s *)dev;
-
-  switch (cmd)
-    {
-      /* Handle OA generic case */
-    }
-
-  /* If none of the OA generic commands, try the device-specific ioctl */
+  int retval = 0;
 
   if (priv->ops->ioctl)
     {
-      return priv->ops->ioctl(priv, cmd, arg);
+      retval = priv->ops->ioctl(priv, cmd, arg);
     }
 
-  return -EINVAL;
+  if (retval != OA_TC6_IOCTL_CMD_NOT_IMPLEMENTED)
+    {
+      return retval;
+    }
+
+  /* If the device-specific command is not implemented, try if the OA generic
+   * ioctl is present */
+
+  switch (cmd)
+    {
+      case SIOCGMIIREG:
+        {
+          struct mii_ioctl_data_s *req =
+            (struct mii_ioctl_data_s *)((uintptr_t)arg);
+          return oa_tc6_read_mii(priv, req);
+        }
+      case SIOCSMIIREG:
+        {
+          struct mii_ioctl_data_s *req =
+            (struct mii_ioctl_data_s *)((uintptr_t)arg);
+          return oa_tc6_write_mii(priv, req);
+        }
+      case SIOCGMMDREG:
+        {
+          struct mii_ioctl_data_s *req =
+            (struct mii_ioctl_data_s *)((uintptr_t)arg);
+          return oa_tc6_read_mmd(priv, req);
+        }
+      case SIOCSMMDREG:
+        {
+          struct mii_ioctl_data_s *req =
+            (struct mii_ioctl_data_s *)((uintptr_t)arg);
+          return oa_tc6_write_mmd(priv, req);
+        }
+    }
+
+  return -ENOSYS;
 }
 #endif
 
@@ -1745,6 +1980,14 @@ int oa_tc6_common_init(FAR struct oa_tc6_driver_s *priv,
   ctc = oa_tc6_get_field(stdcap, STDCAP_CTC);
   DEBUGASSERT(mincps <= config->chunk_payload_size);
   DEBUGASSERT((config->rx_cut_through == false) || ctc);
+
+  /* Check if the MDIO access is supported */
+
+  if (! (stdcap & OA_TC6_STDCAP_DPRAC_MASK))
+    {
+      nwarn("Warning: Direct PHY register access is not supported "
+            "by the MAC-PHY, relevant ioctls won't work\n");
+    }
 
   /* Check for mandatory callbacks */
 
