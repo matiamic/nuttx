@@ -325,7 +325,7 @@ static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
 
   /* do something */
-  return OK;
+  return OA_TC6_IOCTL_CMD_NOT_IMPLEMENTED;
 }
 #endif
 
