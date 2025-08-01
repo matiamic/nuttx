@@ -1715,7 +1715,6 @@ static int oa_tc6_ioctl(FAR struct netdev_lowerhalf_s *dev, int cmd,
         }
       case SIOCSMMDREG:
         {
-          nerr("2\n");
           struct mmd_ioctl_data_s *req =
             (struct mmd_ioctl_data_s *)((uintptr_t)arg);
           return oa_tc6_write_mmd(priv, req);
