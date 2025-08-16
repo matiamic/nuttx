@@ -14,8 +14,21 @@ if NET_OA_TC6
 
 config NET_OA_TC6_NCV7410
 	bool "Onsemi NCV7410 (NCN26010) Support"
+	default n
 
 config NET_OA_TC6_LAN865x
 	bool "Microchip LAN865x Support"
+	default n
+
+if NET_OA_TC6_LAN865x
+
+config NET_OA_TC6_LAN865x_MAC
+	int "LAN865x lower 3 bytes of MAC address"
+	default 0
+        range 0 16777215
+	---help---
+		LAN865x does not have a factory-assigned MAC address, it has to be provided externally
+
+endif
 
 endif

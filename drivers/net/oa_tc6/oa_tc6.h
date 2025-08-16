@@ -41,13 +41,15 @@
 #include <nuttx/bits.h>
 #include <stdint.h>
 
+#include <errno.h>
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
 /* Device-specific driver ioctl return value if the cmd is not implemented */
 
-#define OA_TC6_IOCTL_CMD_NOT_IMPLEMENTED 1
+#define OA_TC6_IOCTL_CMD_NOT_IMPLEMENTED (-ENOSYS)
 
 /* NuttX SPI mode number for SPI config as defined in OPEN Alliance TC6 */
 
@@ -154,7 +156,6 @@ typedef uint32_t oa_tc6_regid_t;
 #define OA_TC6_PHY_CONTROL_MMS        0
 #define OA_TC6_PHY_CONTROL_ADDR       0xFF00U
 #define OA_TC6_PHY_CONTROL_REGID      OA_TC6_MAKE_REGID(OA_TC6_PHY_CONTROL_MMS, OA_TC6_PHY_CONTROL_ADDR)
-#define OA_TC6_PHY_CONTROL_LCTL_POS   12
 
 #define OA_TC6_PHY_STATUS_MMS         0
 #define OA_TC6_PHY_STATUS_ADDR        0xFF01U
@@ -293,17 +294,19 @@ typedef uint32_t oa_tc6_regid_t;
 enum oa_tc6_ifstate_e
 {
   OA_TC6_IFSTATE_RESET,
-  OA_TC6_IFSTATE_INIT_DOWN,
-  OA_TC6_IFSTATE_INIT_UP,
+  OA_TC6_IFSTATE_DOWN,
+  OA_TC6_IFSTATE_UP,
+  OA_TC6_IFSTATE_UP_RECOVERY,
 };
 
 enum oa_tc6_action_e
 {
-  OA_TC6_ACTION_CONFIG,        /* Called before OA generic config         */
-  OA_TC6_ACTION_IFUP,          /* Called after the interface is enabled   */
-  OA_TC6_ACTION_IFDOWN,        /* Called before the interface is disabled */
-  OA_TC6_ACTION_EXST,          /* Called when EXST is detected in footer  */
-  OA_TC6_ACTION_N              /* Number of diferrent OA actions          */
+  /* TODO: documentation */
+  OA_TC6_ACTION_CONFIG,      /* Called before OA generic config           */
+  OA_TC6_ACTION_ENABLE,      /* Called to perform device-specific enable  */
+  OA_TC6_ACTION_DISABLE,     /* Called to perform device-specific disable */
+  OA_TC6_ACTION_EXST,        /* Called when EXST is detected in footer    */
+  OA_TC6_ACTION_N            /* Number of elements in this enum           */
 };
 
 struct oa_tc6_driver_s;
@@ -340,6 +343,7 @@ struct oa_tc6_driver_s
   enum oa_tc6_ifstate_e ifstate;   /* Driver state                         */
 
   struct work_s interrupt_work;    /* wq handle for the interrupt work     */
+  struct work_s recovery_work;     /* wq handle for the SPI recovery work  */
   struct work_s io_work;           /* wq handle for the io work            */
 
   int txc;                         /* TX credits                           */

@@ -66,7 +66,13 @@ struct ncv7410_driver_s
 /* Helper functions */
 
 static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv);
+static int ncv7410_refresh_mac_filter(FAR struct ncv7410_driver_s *priv);
+static int ncv7410_set_filter_slot(FAR struct ncv7410_driver_s *priv,
+                                   FAR const uint8_t *mac,
+                                   int slot);
 static int ncv7410_config(FAR struct ncv7410_driver_s *priv);
+static int ncv7410_enable(FAR struct ncv7410_driver_s *priv);
+static int ncv7410_disable(FAR struct ncv7410_driver_s *priv);
 
 /* OA-TC6 lower callbacks */
 
@@ -123,6 +129,79 @@ static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv)
   return OK;
 }
 
+static int ncv7410_refresh_mac_filter(FAR struct ncv7410_driver_s *priv)
+{
+  /* Write all filter slots marked as active into the MAC-PHY */
+
+  uint8_t active = priv->filter.active;
+  int i;
+
+  for (i = 0; i < NCV_ADDR_FILTER_SLOTS; i++)
+    {
+      if (active & (1 << i))
+        {
+          FAR uint8_t *mac = priv->filter.addrs[i];
+          if (ncv7410_set_filter_slot(priv, mac, i))
+            {
+              return ERROR;
+            }
+        }
+    }
+
+  return OK;
+}
+
+static int ncv7410_set_filter_slot(FAR struct ncv7410_driver_s *priv,
+                                   FAR const uint8_t *mac,
+                                   int slot)
+{
+  FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
+  uint32_t regval;
+
+  /* Write to the MAC-PHY */
+
+  regval =   (mac[2] << 24)
+           | (mac[3] << 16)
+           | (mac[4] << 8)
+           | (mac[5]);
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRFILTL_REGID(slot), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return ERROR;
+    }
+
+  regval =   (1 << 31)  /* Enable filter */
+           | (mac[0] << 8)
+           | (mac[1]);
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRFILTH_REGID(slot), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return ERROR;
+    }
+
+  /* All fields are significant */
+
+  regval = 0xffffffff;
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRMASKL_REGID(slot), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return ERROR;
+    }
+
+  regval = 0x0000ffff;
+
+  if (oa_tc6_write_reg(dev, NCV_ADDRMASKH_REGID(slot), regval))
+    {
+      nerr("Error: Error during SPI transmission\n");
+      return ERROR;
+    }
+
+  return OK;
+}
+
 static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
@@ -130,6 +209,14 @@ static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
   uint32_t regval;
 
   ninfo("Configuring NCV7410\n");
+
+  /* Refresh the MAC address filter in case the configuration is called
+   * due to the MAC-PHY losing its configuration */
+
+  if (ncv7410_refresh_mac_filter(priv))
+    {
+      return ERROR;
+    }
 
   /* setup LEDs DIO0: txrx blink
    *            DIO1: link enabled and link status up
@@ -145,8 +232,8 @@ static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
       return ERROR;
     }
 
-  /* enable MAC TX, RX, enable transmit FCS computation on MAC,
-   * enable MAC address filtering if not promiscuous
+  /* Enable MAC TX, RX, enable transmit FCS computation on MAC,
+   * Enable MAC address filtering if not promiscuous
    */
 
   regval =   (1 << NCV_MAC_CONTROL0_FCSA_POS)
@@ -165,6 +252,42 @@ static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
   return OK;
 }
 
+static int ncv7410_enable(FAR struct ncv7410_driver_s *priv)
+{
+  FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
+
+  uint32_t setbits;
+
+  ninfo("Info: Enabling NCV7410 PHY's TX and RX\n");
+
+  setbits = (1 << NCV_PHY_CONTROL_LCTL_POS);
+
+  if (oa_tc6_set_clear_bits(dev, OA_TC6_PHY_CONTROL_REGID, setbits, 0))
+    {
+      return ERROR;
+    }
+
+  return OK;
+}
+
+static int ncv7410_disable(FAR struct ncv7410_driver_s *priv)
+{
+  FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
+
+  uint32_t clearbits;
+
+  ninfo("Info: Disabling NCV7410 PHY's TX and RX\n");
+
+  clearbits = (1 << NCV_PHY_CONTROL_LCTL_POS);
+
+  if (oa_tc6_set_clear_bits(dev, OA_TC6_PHY_CONTROL_REGID, 0, clearbits))
+    {
+      return ERROR;
+    }
+
+  return OK;
+}
+
 static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
                           enum oa_tc6_action_e action)
 {
@@ -174,12 +297,19 @@ static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
     {
       case OA_TC6_ACTION_CONFIG:
           return ncv7410_config(priv);
-      case OA_TC6_ACTION_IFUP:
-      case OA_TC6_ACTION_IFDOWN:
+
+      case OA_TC6_ACTION_ENABLE:
+          return ncv7410_enable(priv);
+
+      case OA_TC6_ACTION_DISABLE:
+          return ncv7410_disable(priv);
+
       case OA_TC6_ACTION_EXST:
           break;
+
       default:
-          nerr("Unknown OA-TC6 lower action number\n");
+          nerr("Error: Unknown OA-TC6 lower action code\n");
+          return ERROR;
     }
 
   return OK;
@@ -190,7 +320,6 @@ static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
 {
   FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
   uint8_t active = priv->filter.active;
-  uint32_t regval;
   int i;
 
   /* Check if there is a free slot in the filter */
@@ -207,9 +336,9 @@ static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
     {
       if (((active >> i) & 1) && memcmp(priv->filter.addrs[i], mac, 6) == 0)
         {
-          nerr("Error: The provided address is already in the slot %d "
-               "of the filter\n", i);
-          return -EINVAL;
+          nwarn("Warning: The provided address is already in the slot %d "
+                "of the filter\n", i);
+          return OK;
         }
     }
 
@@ -223,44 +352,9 @@ static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
         }
     }
 
-  /* Write to the MAC-PHY */
-
-  regval =   (mac[2] << 24)
-           | (mac[3] << 16)
-           | (mac[4] << 8)
-           | (mac[5]);
-
-  if (oa_tc6_write_reg(dev, NCV_ADDRFILTL_REGID(i), regval))
+  if (ncv7410_set_filter_slot(priv, mac, i))
     {
-      nerr("Error: Error during SPI transmission\n");
-      return -EIO;
-    }
-
-  regval =   (1 << 31)  /* Enable filter */
-           | (mac[0] << 8)
-           | (mac[1]);
-
-  if (oa_tc6_write_reg(dev, NCV_ADDRFILTH_REGID(i), regval))
-    {
-      nerr("Error: Error during SPI transmission\n");
-      return -EIO;
-    }
-
-  /* All fields are significant */
-
-  regval = 0xffffffff;
-
-  if (oa_tc6_write_reg(dev, NCV_ADDRMASKL_REGID(i), regval))
-    {
-      nerr("Error: Error during SPI transmission\n");
-      return -EIO;
-    }
-
-  regval = 0x0000ffff;
-
-  if (oa_tc6_write_reg(dev, NCV_ADDRMASKH_REGID(i), regval))
-    {
-      nerr("Error: Error during SPI transmission\n");
+      nerr("Error setting filter slot\n");
       return -EIO;
     }
 
@@ -293,8 +387,8 @@ static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
 
       if (i == NCV_ADDR_FILTER_SLOTS - 1)
         {
-          nerr("Error: The address is not present in the filter\n");
-          return -EINVAL;
+          nwarn("Warning: The address is not present in the filter\n");
+          return OK;
         }
     }
 
@@ -322,9 +416,6 @@ static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
 static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
                          unsigned long arg)
 {
-  FAR struct ncv7410_driver_s *priv = (FAR struct ncv7410_driver_s *)dev;
-
-  /* do something */
   return OA_TC6_IOCTL_CMD_NOT_IMPLEMENTED;
 }
 #endif
