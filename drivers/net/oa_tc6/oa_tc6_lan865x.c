@@ -82,14 +82,26 @@ static int lan865x_action(FAR struct oa_tc6_driver_s *dev,
                           enum oa_tc6_action_e action);
 static int lan865x_addmac(FAR struct oa_tc6_driver_s *dev,
                           FAR const uint8_t *mac);
-#ifdef CONFIG_NET_MCASTGROUP
 static int lan865x_rmmac(FAR struct oa_tc6_driver_s *dev,
                          FAR const uint8_t *mac);
-#endif
 #ifdef CONFIG_NETDEV_IOCTL
 static int lan865x_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
                          unsigned long arg);
 #endif
+
+/*****************************************************************************
+ * Private Data
+ ****************************************************************************/
+
+static struct oa_tc6_ops_s g_lan865x_ops =
+{
+  lan865x_action,
+  lan865x_addmac,
+  lan865x_rmmac,
+#ifdef CONFIG_NETDEV_IOCTL
+  lan865x_ioctl
+#endif
+};
 
 /*****************************************************************************
  * Private Functions
@@ -205,10 +217,6 @@ static int lan865x_config(FAR struct lan865x_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
 
-#ifdef CONFIG_NET_PROMISCUOUS
-  uint32_t regval;
-#endif
-
   /* AN1760 appnote variables */
 
   int err;
@@ -219,7 +227,7 @@ static int lan865x_config(FAR struct lan865x_driver_s *priv)
   uint16_t cfgparam1;
   uint16_t cfgparam2;
 
-  ninfo("Configuring LAN865x\n");
+  ninfo("Info: Configuring LAN865x\n");
 
   /* Perform the configuration procedure as outlined in the AN1760 appnote */
 
@@ -279,13 +287,12 @@ static int lan865x_config(FAR struct lan865x_driver_s *priv)
     }
 
 #ifdef CONFIG_NET_PROMISCUOUS
-  /* Disable MAC address filtering if promiscuous */
+  /* Disable MAC address filtering if promiscuous,
+   * use read-modify-write so reserved bits are not overridden
+   */
 
-  regval = 1 << LAN865x_MAC_NCFGR_CAF_POS;
-
-  /* Use read-modify-write so reserved bits are not overridden */
-
-  if (oa_tc6_set_clear_bits(dev, LAN865x_MAC_NCFGR_REGID, regval, 0))
+  if (oa_tc6_set_clear_bits(dev, LAN865x_MAC_NCFGR_REGID,
+                            1 << LAN865x_MAC_NCFGR_CAF_POS, 0))
     {
       return ERROR;
     }
@@ -356,7 +363,7 @@ static int lan865x_action(FAR struct oa_tc6_driver_s *dev,
           break;
 
       default:
-          nerr("Unknown OA-TC6 lower action number\n");
+          nerr("Error: Unknown OA-TC6 lower action number\n");
           return ERROR;
     }
 
@@ -406,7 +413,7 @@ static int lan865x_addmac(FAR struct oa_tc6_driver_s *dev,
 
   if (lan865x_set_filter_slot(priv, mac, i + 1))
     {
-      nerr("Error setting filter slot\n");
+      nerr("Error: Error setting filter slot\n");
       return -EIO;
     }
 
@@ -421,7 +428,6 @@ static int lan865x_addmac(FAR struct oa_tc6_driver_s *dev,
   return OK;
 }
 
-#ifdef CONFIG_NET_MCASTGROUP
 static int lan865x_rmmac(FAR struct oa_tc6_driver_s *dev,
                          FAR const uint8_t *mac)
 {
@@ -460,7 +466,6 @@ static int lan865x_rmmac(FAR struct oa_tc6_driver_s *dev,
 
   return OK;
 }
-#endif
 
 #ifdef CONFIG_NETDEV_IOCTL
 static int lan865x_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
@@ -469,22 +474,6 @@ static int lan865x_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
   return OA_TC6_IOCTL_CMD_NOT_IMPLEMENTED;
 }
 #endif
-
-/*****************************************************************************
- * Private Data
- ****************************************************************************/
-
-static struct oa_tc6_ops_s g_lan865x_ops =
-{
-  lan865x_action,
-  lan865x_addmac,
-#ifdef CONFIG_NET_MCASTGROUP
-  lan865x_rmmac,
-#endif
-#ifdef CONFIG_NETDEV_IOCTL
-  lan865x_ioctl
-#endif
-};
 
 /*****************************************************************************
  * Public Functions
@@ -535,7 +524,7 @@ int lan865x_initialize(FAR struct spi_dev_s *spi,
   retval = oa_tc6_register(dev);
   if (retval == OK)
     {
-      ninfo("Successfully registered OA-TC6 LAN865x network driver\n");
+      ninfo("Info: Successfully registered OA-TC6 LAN865x network driver\n");
       return OK;
     }
 

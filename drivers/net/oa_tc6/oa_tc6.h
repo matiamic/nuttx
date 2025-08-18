@@ -320,9 +320,7 @@ struct oa_tc6_ops_s
    */
 
   CODE int (*addmac)(FAR struct oa_tc6_driver_s *, FAR const uint8_t *mac);
-#ifdef CONFIG_NET_MCASTGROUP
   CODE int (*rmmac)(FAR struct oa_tc6_driver_s *, FAR const uint8_t *mac);
-#endif
 #ifdef CONFIG_NETDEV_IOCTL
   CODE int (*ioctl)(FAR struct oa_tc6_driver_s *, int cmd, unsigned long arg);
 #endif
@@ -332,6 +330,8 @@ struct oa_tc6_driver_s
 {
   struct netdev_lowerhalf_s dev;   /* Driver data visible by the net stack
                                     * (must be placed first)               */
+
+  uint8_t mac_addr[6];             /* MAC address of the interface         */
 
   uint8_t *txbuf;                  /* SPI transfer buffers                 */
   uint8_t *rxbuf;

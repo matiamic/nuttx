@@ -124,7 +124,7 @@ static void oa_tc6_finalize_rx_packet(FAR struct oa_tc6_driver_s *priv);
 static void oa_tc6_release_tx_packet(FAR struct oa_tc6_driver_s *priv);
 static void oa_tc6_release_rx_packet(FAR struct oa_tc6_driver_s *priv);
 
-/* SPI inline utility functions */
+/* SPI utility functions */
 
 static void oa_tc6_select_spi(FAR struct oa_tc6_driver_s *priv);
 static void oa_tc6_deselect_spi(FAR struct oa_tc6_driver_s *priv);
@@ -145,6 +145,7 @@ static int oa_tc6_reset(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv);
 static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv);
+static int oa_tc6_update_mac_filter(FAR struct oa_tc6_driver_s *priv);
 
 /* Driver buffer manipulation */
 
@@ -346,7 +347,7 @@ static int oa_tc6_interrupt(int irq, FAR void *context, FAR void *arg)
 {
   FAR struct oa_tc6_driver_s *priv = (FAR struct oa_tc6_driver_s *)arg;
 
-  ninfo("OA-TC6 interrupt!\n");
+  ninfo("Info: OA-TC6 interrupt!\n");
 
   /* Schedule interrupt work */
 
@@ -384,7 +385,7 @@ static void oa_tc6_interrupt_work(FAR void *arg)
       return;
     }
 
-  ninfo("OA-TC6 interrupt worker invoked!\n");
+  ninfo("Info: OA-TC6 interrupt worker invoked!\n");
 
   do
     {
@@ -536,6 +537,9 @@ static void oa_tc6_enter_recovery(FAR struct oa_tc6_driver_s *priv)
   net_lock();
   netdev_lower_carrier_off(&priv->dev);
   net_unlock();
+
+  /* TODO: think about if not use OA_TC6_RECOVERY_WORK_INTERVAL_MS
+   * instead of 0, may cause fast looping? */
 
   work_queue(OA_TC6_WORK, &priv->recovery_work,
              oa_tc6_recovery_work, priv, 0);
@@ -738,7 +742,7 @@ static bool oa_tc6_can_rx(FAR struct oa_tc6_driver_s *priv)
       return true;
     }
 
-  ninfo("INFO: Failed to alloc rx netpkt\n");
+  ninfo("Info: Failed to alloc rx netpkt\n");
 
   /* There is no buffer for RX data */
 
@@ -1172,7 +1176,7 @@ static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv)
   uint8_t chunk_payload_size = priv->config->chunk_payload_size;
   uint8_t cps = 0;
 
-  ninfo("Configuring OA-TC6\n");
+  ninfo("Info: Configuring OA-TC6\n");
 
   /* Call the MAC-PHY type specific config hook */
 
@@ -1236,7 +1240,7 @@ static int oa_tc6_config(FAR struct oa_tc6_driver_s *priv)
 
 static int oa_tc6_enable(FAR struct oa_tc6_driver_s *priv)
 {
-  ninfo("Enabling OA-TC6\n");
+  ninfo("Info: Enabling OA-TC6\n");
 
   /* Call device-specific code */
 
@@ -1273,7 +1277,7 @@ static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
 
   priv->config->enable(priv->config, false);
 
-  ninfo("Disabling OA-TC6\n");
+  ninfo("Info: Disabling OA-TC6\n");
 
   /* Call device-specific code */
 
@@ -1290,6 +1294,49 @@ static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
       return ERROR;
     }
 
+  return OK;
+}
+
+/****************************************************************************
+ * Name: oa_tc6_update_mac_filter
+ *
+ * Description:
+ *   To be called during the ifup procedure. Checks whether the address saved
+ *   in the base net_driver_s structure differs from the one saved in
+ *   the mac_addr field of priv. If yes, the rmmac and addmac calls are issued
+ *   in order to update the MAC address filter in the MAC-PHY to match the one
+ *   in the base structure.
+ *   The difference in addresses may be caused by performing the SIOCSIFHWADDR
+ *   ioctl call.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
+static int oa_tc6_update_mac_filter(FAR struct oa_tc6_driver_s *priv)
+{
+  if (!memcmp(&priv->mac_addr, &priv->dev.netdev.d_mac.ether, 6))
+    {
+      return OK;
+    }
+
+  ninfo("Info: A new MAC address is present, updating\n");
+
+  if (priv->ops->rmmac(priv, priv->mac_addr))
+    {
+      return ERROR;
+    }
+
+  if (priv->ops->addmac(priv, priv->dev.netdev.d_mac.ether.ether_addr_octet))
+    {
+      return ERROR;
+    }
+
+  memcpy(priv->mac_addr, &priv->dev.netdev.d_mac.ether, 6);
   return OK;
 }
 
@@ -1562,6 +1609,13 @@ static int oa_tc6_ifup(FAR struct netdev_lowerhalf_s *dev)
         }
 
       priv->ifstate = OA_TC6_IFSTATE_DOWN;
+    }
+
+  if (oa_tc6_update_mac_filter(priv))
+    {
+      nxmutex_unlock(&priv->lock);
+      nerr("Error: Error during MAC address filter update\n");
+      return -EIO;
     }
 
   if (oa_tc6_enable(priv) == ERROR)
@@ -1959,7 +2013,7 @@ int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
 }
 
 /****************************************************************************
- * Name: oa_tc6_set_clear_bits
+ * Name: oa_tc6_store_mac_addr
  *
  * Description:
  *   Store the given MAC address into the net driver structure.
@@ -1977,6 +2031,7 @@ void oa_tc6_store_mac_addr(FAR struct oa_tc6_driver_s *priv,
                            FAR uint8_t *mac)
 {
   memcpy(&priv->dev.netdev.d_mac.ether, mac, sizeof(struct ether_addr));
+  memcpy(&priv->mac_addr, mac, 6);
 }
 
 /****************************************************************************
