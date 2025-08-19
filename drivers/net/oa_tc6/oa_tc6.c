@@ -1953,7 +1953,7 @@ int oa_tc6_write_reg(FAR struct oa_tc6_driver_s *priv,
  * Name: oa_tc6_read_reg
  *
  * Description:
- *   Read a MAC-PHY register. Thin wrapper around oa_tc6_read_reg_raw.
+ *   Read a MAC-PHY register.
  *
  * Input Parameters:
  *   priv  - pointer to the driver-specific state structure

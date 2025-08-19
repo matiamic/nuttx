@@ -293,15 +293,14 @@ typedef uint32_t oa_tc6_regid_t;
 
 enum oa_tc6_ifstate_e
 {
-  OA_TC6_IFSTATE_RESET,
-  OA_TC6_IFSTATE_DOWN,
-  OA_TC6_IFSTATE_UP,
-  OA_TC6_IFSTATE_UP_RECOVERY,
+  OA_TC6_IFSTATE_RESET,       /* The i/f is not configured after reset    */
+  OA_TC6_IFSTATE_DOWN,        /* The i/f is configured, but disabled      */
+  OA_TC6_IFSTATE_UP,          /* The i/f is configured and enabled        */
+  OA_TC6_IFSTATE_UP_RECOVERY, /* The i/f is enabled, but SPI lost contact */
 };
 
 enum oa_tc6_action_e
 {
-  /* TODO: documentation */
   OA_TC6_ACTION_CONFIG,      /* Called before OA generic config           */
   OA_TC6_ACTION_ENABLE,      /* Called to perform device-specific enable  */
   OA_TC6_ACTION_DISABLE,     /* Called to perform device-specific disable */
@@ -312,11 +311,14 @@ enum oa_tc6_action_e
 struct oa_tc6_driver_s;
 struct oa_tc6_ops_s
 {
+  /* action - perform one of oa_tc6_action_e device-specific procedures */
+
   CODE int (*action)(FAR struct oa_tc6_driver_s *, enum oa_tc6_action_e);
 
-  /* addmac is used for initializing the MAC filter with the default
-   * MAC address, therefore it is needed even when CONFIG_NET_MCASTGROUP
-   * is not set
+  /* addmac - set the MAC address filter so that the provided MAC will pass
+   *   - shall return OK even if the provided MAC is already in the filter
+   * rmmac  - remove the provided MAC from the MAC address filter
+   *   - shall return OK even if the MAC address was not in the filter before
    */
 
   CODE int (*addmac)(FAR struct oa_tc6_driver_s *, FAR const uint8_t *mac);
@@ -371,24 +373,135 @@ extern "C"
  * Public Function Prototypes
  ****************************************************************************/
 
+/****************************************************************************
+ * Name: oa_tc6_write_reg
+ *
+ * Description:
+ *   Write to a MAC-PHY register.
+ *
+ * Input Parameters:
+ *   priv  - pointer to the driver-specific state structure
+ *   regid - Register id encapsulating MMS and ADDR
+ *   word  - 32-bit word to be written to the register
+ *
+ * Returned Value:
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 int oa_tc6_write_reg(FAR struct oa_tc6_driver_s *priv,
                      oa_tc6_regid_t regid, uint32_t word);
 
+/****************************************************************************
+ * Name: oa_tc6_read_reg
+ *
+ * Description:
+ *   Read a MAC-PHY register.
+ *
+ * Input Parameters:
+ *   priv  - pointer to the driver-specific state structure
+ *   regid - register id encapsulating MMS and ADDR
+ *   word  - pointer to a 32-bit destination variable
+ *
+ * Returned Value:
+ *   On successful transaction OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 int oa_tc6_read_reg(FAR struct oa_tc6_driver_s *priv,
                     oa_tc6_regid_t regid, FAR uint32_t *word);
+
+/****************************************************************************
+ * Name: oa_tc6_set_clear_bits
+ *
+ * Description:
+ *   Perform a read-modify-write operation on a given register
+ *   while setting bits from the setbits argument and clearing bits from
+ *   the clearbits argument.
+ *
+ * Input Parameters:
+ *   priv      - pointer to the driver-specific state structure
+ *   regid     - register id of the register to be modified
+ *   setbits   - bits set to one will be set in the register
+ *   clearbits - bits set to one will be cleared in the register
+ *
+ * Returned Value:
+ *   On a successful transaction OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
                           oa_tc6_regid_t regid,
                           uint32_t setbits, uint32_t clearbits);
 
+/****************************************************************************
+ * Name: oa_tc6_store_mac_addr
+ *
+ * Description:
+ *   Store the given MAC address into the net driver structure.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to an array containing the MAC address
+ *
+ * Returned Value:
+ *   None
+ *
+ ****************************************************************************/
+
 void oa_tc6_store_mac_addr(FAR struct oa_tc6_driver_s *priv,
                            FAR uint8_t *mac);
 
+/****************************************************************************
+ * Name: oa_tc6_bitrev8
+ *
+ * Description:
+ *   Perform a bit reverse of a byte.
+ *
+ * Input Parameters:
+ *   byte - byte to be reversed
+ *
+ * Returned Value:
+ *   Byte with reversed bits is returned.
+ *
+ ****************************************************************************/
+
 uint8_t oa_tc6_bitrev8(uint8_t byte);
+
+/****************************************************************************
+ * Name: oa_tc6_common_init
+ *
+ * Description:
+ *   Initialize the upper-half part of the device structure and reset
+ *   the MAC-PHY.
+ *
+ * Input Parameters:
+ *   priv  - pointer to the driver-specific state structure
+ *   spi    - reference to the SPI driver state data
+ *   config - reference to the predefined configuration of the driver
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
 
 int oa_tc6_common_init(FAR struct oa_tc6_driver_s *priv,
                        FAR struct spi_dev_s *spi,
                        FAR struct oa_tc6_config_s *config);
+
+/****************************************************************************
+ * Name: oa_tc6_register
+ *
+ * Description:
+ *   Register the OA-TC6 lower-half driver.
+ *
+ * Input Parameters:
+ *   oa_tc6_dev - reference to the initialized oa_tc6_driver_s structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
 
 int oa_tc6_register(FAR struct oa_tc6_driver_s *oa_tc6_dev);
 
