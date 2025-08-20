@@ -56,42 +56,4 @@
 #define LAN865x_MAC_SAB_REGID(i)    OA_TC6_MAKE_REGID(LAN865x_MAC_SAB1_MMS, LAN865x_MAC_SAB1_ADDR + 2 * (i - 1))
 #define LAN865x_MAC_SAT_REGID(i)    OA_TC6_MAKE_REGID(LAN865x_MAC_SAB1_MMS, LAN865x_MAC_SAB1_ADDR + 2 * (i - 1) + 1)
 
-#ifdef __cplusplus
-#define EXTERN extern "C"
-extern "C"
-{
-#else
-#define EXTERN extern
-#endif
-
-/****************************************************************************
- * Public Function Prototypes
- ****************************************************************************/
-
-/****************************************************************************
- * Name: lan865x_initialize
- *
- * Description:
- *   Initialize and register the OA-TC6 and the LAN865x drivers.
- *   This function is called by the oa_tc6_initialize upon detecting
- *   the LAN865x MAC-PHY on the SPI, but it also can be called directly from
- *   the board level code.
- *
- * Input Parameters:
- *   spi    - pointer to the intitialized spi interface
- *   config - pointer to the initialized MAC-PHY configuration
- *
- * Returned Value:
- *   On success OK is returned, otherwise negated errno is returned.
- *
- ****************************************************************************/
-
-int lan865x_initialize(struct spi_dev_s *spi,
-                       struct oa_tc6_config_s *config);
-
-#undef EXTERN
-#ifdef __cplusplus
-}
-#endif
-
 #endif /* __DRIVERS_NET_OA_TC6_LAN865x_H */

@@ -76,14 +76,15 @@ struct oa_tc6_config_s
  ****************************************************************************/
 
 /****************************************************************************
- * Name: oa_initialize
+ * Name: oa_tc6_initialize
  *
  * Description:
- *   Initialize the Ethernet driver.
+ *   Read the PHYID of the MAC-PHY device and initialize the matching
+ *   driver.
  *
  * Input Parameters:
- *   spi    - reference to the SPI driver state data
- *   config - reference to the predefined configuration
+ *   spi    - pointer to the intitialized SPI interface
+ *   config - pointer to the initialized MAC-PHY configuration
  *
  * Returned Value:
  *   On success OK is returned, otherwise negated errno is returned.
@@ -91,8 +92,52 @@ struct oa_tc6_config_s
  ****************************************************************************/
 
 struct spi_dev_s; /* forward declaration, see nuttx/spi/spi.h */
+
 int oa_tc6_initialize(FAR struct spi_dev_s *spi,
-                      struct oa_tc6_config_s *config);
+                      FAR struct oa_tc6_config_s *config);
+
+/****************************************************************************
+ * Name: ncv7410_initialize
+ *
+ * Description:
+ *   Initialize and register the OA-TC6 and the NCV7410 (NCN26010) drivers.
+ *   This function is called by the oa_tc6_initialize upon detecting
+ *   the NCV7410 MAC-PHY on the SPI, but it also may be called directly from
+ *   the board level code.
+ *
+ * Input Parameters:
+ *   spi    - pointer to the intitialized SPI interface
+ *   config - pointer to the initialized MAC-PHY configuration
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+int ncv7410_initialize(struct spi_dev_s *spi,
+                       struct oa_tc6_config_s *config);
+
+
+/****************************************************************************
+ * Name: lan865x_initialize
+ *
+ * Description:
+ *   Initialize and register the OA-TC6 and the LAN865x drivers.
+ *   This function is called by the oa_tc6_initialize upon detecting
+ *   the LAN865x MAC-PHY on the SPI, but it also may be called directly from
+ *   the board level code.
+ *
+ * Input Parameters:
+ *   spi    - pointer to the intitialized SPI interface
+ *   config - pointer to the initialized MAC-PHY configuration
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
+ ****************************************************************************/
+
+int lan865x_initialize(struct spi_dev_s *spi,
+                       struct oa_tc6_config_s *config);
 
 #undef EXTERN
 #ifdef __cplusplus

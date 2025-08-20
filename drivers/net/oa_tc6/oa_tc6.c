@@ -2081,8 +2081,8 @@ uint8_t oa_tc6_bitrev8(uint8_t byte)
  *   driver.
  *
  * Input Parameters:
- *   spi    - reference to the SPI driver state data
- *   config - reference to the predefined configuration of the driver
+ *   spi    - pointer to the intitialized SPI interface
+ *   config - pointer to the initialized MAC-PHY configuration
  *
  * Returned Value:
  *   On success OK is returned, otherwise negated errno is returned.

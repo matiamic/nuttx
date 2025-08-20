@@ -105,6 +105,21 @@ static struct oa_tc6_ops_s g_ncv7410_ops =
  * Private Functions
  ****************************************************************************/
 
+/****************************************************************************
+ * Name: ncv7410_init_mac_addr
+ *
+ * Description:
+ *   Read the factory-assigned MAC address from the MAC-PHY and store it
+ *   into the driver structure.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
@@ -141,10 +156,26 @@ static int ncv7410_init_mac_addr(FAR struct ncv7410_driver_s *priv)
   return OK;
 }
 
+/****************************************************************************
+ * Name: ncv7410_refresh_mac_filter
+ *
+ * Description:
+ *   Reinitialize all filter slots in the MAC-PHY marked active in the filter
+ *   structure. This is called during the config procedure.
+ *   The reason is that the config procedure may be called as a consequence
+ *   of the MAC-PHY losing its configuration, for example as a result of an
+ *   unexpected power cycle.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int ncv7410_refresh_mac_filter(FAR struct ncv7410_driver_s *priv)
 {
-  /* Write all filter slots marked as active into the MAC-PHY */
-
   uint8_t active = priv->filter.active;
   int i;
 
@@ -162,6 +193,23 @@ static int ncv7410_refresh_mac_filter(FAR struct ncv7410_driver_s *priv)
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: ncv7410_set_filter_slot
+ *
+ * Description:
+ *   Set the provided MAC address filter slot number with the provided MAC
+ *   address in a way that the given MAC address passes the filter.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to the array representing the MAC address
+ *   slot - the number of the slot in the MAC-PHY (accorging to datasheet)
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int ncv7410_set_filter_slot(FAR struct ncv7410_driver_s *priv,
                                    FAR const uint8_t *mac,
@@ -213,6 +261,23 @@ static int ncv7410_set_filter_slot(FAR struct ncv7410_driver_s *priv,
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: lan865x_config
+ *
+ * Description:
+ *   Implementation of the OA_TC6_ACTION_CONFIG for the NCV7410.
+ *   Enables TX/RX on the MAC (up/down is controlled by the LCTL bit in
+ *   the PHY CONTROL register).
+ *   Enable address filtering if the promiscuous mode is not desired.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
 {
@@ -277,6 +342,22 @@ static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
   return OK;
 }
 
+/****************************************************************************
+ * Name: ncv7410_enable
+ *
+ * Description:
+ *   Implementation of the OA_TC6_ACTION_ENABLE for the NCV7410.
+ *   Set the LCTL bit in the PHY CONTROL register. This will enable TX/RX
+ *   on the PHY level.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int ncv7410_enable(FAR struct ncv7410_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
@@ -295,6 +376,22 @@ static int ncv7410_enable(FAR struct ncv7410_driver_s *priv)
   return OK;
 }
 
+/****************************************************************************
+ * Name: ncv7410_disable
+ *
+ * Description:
+ *   Implementation of the OA_TC6_ACTION_DISABLE for the NCV7410.
+ *   Clear the LCTL bit in the PHY CONTROL register. This will disable TX/RX
+ *   on the PHY level.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int ncv7410_disable(FAR struct ncv7410_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
@@ -312,6 +409,22 @@ static int ncv7410_disable(FAR struct ncv7410_driver_s *priv)
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: ncv7410_action
+ *
+ * Description:
+ *   OA-generic driver callback.
+ *   Perform the operation defined by the action argument if applicable.
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver-specific state structure
+ *   action - the code of the operation to perform
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
                           enum oa_tc6_action_e action)
@@ -339,6 +452,23 @@ static int ncv7410_action(FAR struct oa_tc6_driver_s *dev,
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: ncv7410_addmac
+ *
+ * Description:
+ *   OA-generic driver callback.
+ *   Set the MAC address filter in a way that the given MAC address passes
+ *   the filter.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to the array representing the MAC address
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
                           FAR const uint8_t *mac)
@@ -394,6 +524,22 @@ static int ncv7410_addmac(FAR struct oa_tc6_driver_s *dev,
   return OK;
 }
 
+/****************************************************************************
+ * Name: ncv7410_rmmac
+ *
+ * Description:
+ *   OA-generic driver callback.
+ *   Remove the given MAC address from the MAC address filter.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to the array representing the MAC address
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
                          FAR const uint8_t *mac)
 {
@@ -416,7 +562,7 @@ static int ncv7410_rmmac(FAR struct oa_tc6_driver_s *dev,
         }
     }
 
-  /* Clear the ADDRFILT0H, where enable flag is located */
+  /* Clear the ADDRFILT0H, where the enable flag is located */
 
   regval = 0;
 
@@ -446,6 +592,24 @@ static int ncv7410_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
 
 /*****************************************************************************
  * Public Functions
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: ncv7410_initialize
+ *
+ * Description:
+ *   Initialize and register the OA-TC6 and the NCV7410 (NCN26010) drivers.
+ *   This function is called by the oa_tc6_initialize upon detecting
+ *   the NCV7410 MAC-PHY on the SPI, but it also may be called directly from
+ *   the board level code.
+ *
+ * Input Parameters:
+ *   spi    - pointer to the intitialized SPI interface
+ *   config - pointer to the initialized MAC-PHY configuration
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
  ****************************************************************************/
 
 int ncv7410_initialize(FAR struct spi_dev_s *spi,

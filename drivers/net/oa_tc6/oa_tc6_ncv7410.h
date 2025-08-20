@@ -98,24 +98,4 @@
 #define NCV_MACID1_MASK            GENMASK(7, 0)
 #define NCV_MACID1_POS             0
 
-#ifdef __cplusplus
-#define EXTERN extern "C"
-extern "C"
-{
-#else
-#define EXTERN extern
-#endif
-
-/****************************************************************************
- * Public Function Prototypes
- ****************************************************************************/
-
-int ncv7410_initialize(struct spi_dev_s *spi,
-                       struct oa_tc6_config_s *config);
-
-#undef EXTERN
-#ifdef __cplusplus
-}
-#endif
-
 #endif /* __DRIVERS_NET_OA_TC6_NCV7410_H */

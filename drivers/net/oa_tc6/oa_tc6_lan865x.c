@@ -112,7 +112,7 @@ static struct oa_tc6_ops_s g_lan865x_ops =
  *
  * Description:
  *   Read the OUI from the MAC-PHY and use it as the top 3 bytes of the MAC
- *   address. Lower 3 bytes of the MAC address are read from
+ *   address. The lower 3 bytes of the MAC address are read from
  *   the configuration (LAN865x does not have a factory-assigned MAC address).
  *   Store the created MAC address into the driver structure.
  *
@@ -173,8 +173,6 @@ static int lan865x_init_mac_addr(FAR struct lan865x_driver_s *priv)
 
 static int lan865x_refresh_mac_filter(FAR struct lan865x_driver_s *priv)
 {
-  /* Write all filter slots marked as active into the MAC-PHY */
-
   uint8_t active = priv->filter.active;
   int i;
 
@@ -653,11 +651,11 @@ static int lan865x_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
  * Description:
  *   Initialize and register the OA-TC6 and the LAN865x drivers.
  *   This function is called by the oa_tc6_initialize upon detecting
- *   the LAN865x MAC-PHY on the SPI, but it also can be called directly from
+ *   the LAN865x MAC-PHY on the SPI, but it also may be called directly from
  *   the board level code.
  *
  * Input Parameters:
- *   spi    - pointer to the intitialized spi interface
+ *   spi    - pointer to the intitialized SPI interface
  *   config - pointer to the initialized MAC-PHY configuration
  *
  * Returned Value:
