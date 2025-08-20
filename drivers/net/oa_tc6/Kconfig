@@ -16,6 +16,16 @@ config NET_OA_TC6_NCV7410
 	bool "Onsemi NCV7410 (NCN26010) Support"
 	default n
 
+if NET_OA_TC6_NCV7410
+
+config NET_OA_TC6_NCV7410_LEDS
+	bool "Setup NCV7410 DIO outputs as status LEDs"
+	default n
+	---help---
+		Setup DIO0 to blink on TX/RX and DIO1 to reflect the LCTL bit in the PHY CONTROL register (Up/Down).
+
+endif
+
 config NET_OA_TC6_LAN865x
 	bool "Microchip LAN865x Support"
 	default n

@@ -241,6 +241,7 @@ static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
       return ERROR;
     }
 
+#ifdef CONFIG_NET_OA_TC6_NCV7410_LEDS
   /* setup LEDs DIO0: txrx blink
    *            DIO1: link enabled and link status up
    */
@@ -254,6 +255,7 @@ static int ncv7410_config(FAR struct ncv7410_driver_s *priv)
     {
       return ERROR;
     }
+#endif
 
   /* Enable MAC TX, RX, enable transmit FCS computation on MAC,
    * Enable MAC address filtering if not promiscuous
