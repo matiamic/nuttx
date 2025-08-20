@@ -107,6 +107,23 @@ static struct oa_tc6_ops_s g_lan865x_ops =
  * Private Functions
  ****************************************************************************/
 
+/****************************************************************************
+ * Name: lan865x_init_mac_addr
+ *
+ * Description:
+ *   Read the OUI from the MAC-PHY and use it as the top 3 bytes of the MAC
+ *   address. Lower 3 bytes of the MAC address are read from
+ *   the configuration (LAN865x does not have a factory-assigned MAC address).
+ *   Store the created MAC address into the driver structure.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int lan865x_init_mac_addr(FAR struct lan865x_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
@@ -136,6 +153,24 @@ static int lan865x_init_mac_addr(FAR struct lan865x_driver_s *priv)
   return OK;
 }
 
+/****************************************************************************
+ * Name: lan865x_refresh_mac_filter
+ *
+ * Description:
+ *   Reinitialize all filter slots in the MAC-PHY marked active in the filter
+ *   structure. This is called during the config procedure.
+ *   The reason is that the config procedure may be called as a consequence
+ *   of the MAC-PHY losing its configuration, for example as a result of an
+ *   unexpected power cycle.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int lan865x_refresh_mac_filter(FAR struct lan865x_driver_s *priv)
 {
   /* Write all filter slots marked as active into the MAC-PHY */
@@ -160,6 +195,23 @@ static int lan865x_refresh_mac_filter(FAR struct lan865x_driver_s *priv)
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: lan865x_set_filter_slot
+ *
+ * Description:
+ *   Set the provided MAC address filter slot number with the provided MAC
+ *   address in a way that the given MAC address passes the filter.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to the array representing the MAC address
+ *   slot - the number of the slot in the MAC-PHY (accorging to datasheet)
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int lan865x_set_filter_slot(FAR struct lan865x_driver_s *priv,
                                    FAR const uint8_t *mac,
@@ -193,6 +245,25 @@ static int lan865x_set_filter_slot(FAR struct lan865x_driver_s *priv,
   return OK;
 }
 
+/****************************************************************************
+ * Name: lan865x_indirect_read
+ *
+ * Description:
+ *   Microchip's proprietary configuration mechanism defined in the AN1760
+ *   appnote.
+ *   Note: The interface will probably work even without using this mechanism.
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver-specific state structure
+ *   addr   - as defined in the AN1760
+ *   mask   - as defined in the AN1760
+ *   regval - corresponds to the return value from the AN1760
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv,
                                  uint8_t addr, uint8_t mask,
                                  FAR uint8_t *regval)
@@ -212,6 +283,22 @@ static int lan865x_indirect_read(FAR struct lan865x_driver_s *priv,
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: lan865x_config
+ *
+ * Description:
+ *   Implementation of the OA_TC6_ACTION_CONFIG for the LAN865x.
+ *   Perform the configuration as specified in the AN1760 appnote.
+ *   Disable address filtering if the promiscuous mode is desired.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int lan865x_config(FAR struct lan865x_driver_s *priv)
 {
@@ -281,6 +368,8 @@ static int lan865x_config(FAR struct lan865x_driver_s *priv)
       return ERROR;
     }
 
+  /* End of AN1760 appnote */
+
   if (lan865x_refresh_mac_filter(priv))
     {
       return ERROR;
@@ -300,6 +389,21 @@ static int lan865x_config(FAR struct lan865x_driver_s *priv)
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: lan865x_enable
+ *
+ * Description:
+ *   Implementation of the OA_TC6_ACTION_ENABLE for the LAN865x.
+ *   Enable RX and TX on the MAC level.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int lan865x_enable(FAR struct lan865x_driver_s *priv)
 {
@@ -322,6 +426,21 @@ static int lan865x_enable(FAR struct lan865x_driver_s *priv)
   return OK;
 }
 
+/****************************************************************************
+ * Name: lan865x_disable
+ *
+ * Description:
+ *   Implementation of the OA_TC6_ACTION_DISABLE for the LAN865x.
+ *   Disable RX and TX on the MAC level.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int lan865x_disable(FAR struct lan865x_driver_s *priv)
 {
   FAR struct oa_tc6_driver_s *dev = &priv->oa_tc6_dev;
@@ -342,6 +461,22 @@ static int lan865x_disable(FAR struct lan865x_driver_s *priv)
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: lan865x_action
+ *
+ * Description:
+ *   OA-generic driver callback.
+ *   Perform the operation defined by the action argument if applicable.
+ *
+ * Input Parameters:
+ *   priv   - pointer to the driver-specific state structure
+ *   action - the code of the operation to perform
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int lan865x_action(FAR struct oa_tc6_driver_s *dev,
                           enum oa_tc6_action_e action)
@@ -369,6 +504,23 @@ static int lan865x_action(FAR struct oa_tc6_driver_s *dev,
 
   return OK;
 }
+
+/****************************************************************************
+ * Name: lan865x_addmac
+ *
+ * Description:
+ *   OA-generic driver callback.
+ *   Set the MAC address filter in a way that the given MAC address passes
+ *   the filter.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to the array representing the MAC address
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
 
 static int lan865x_addmac(FAR struct oa_tc6_driver_s *dev,
                           FAR const uint8_t *mac)
@@ -428,6 +580,22 @@ static int lan865x_addmac(FAR struct oa_tc6_driver_s *dev,
   return OK;
 }
 
+/****************************************************************************
+ * Name: lan865x_rmmac
+ *
+ * Description:
+ *   OA-generic driver callback.
+ *   Remove the given MAC address from the MAC address filter.
+ *
+ * Input Parameters:
+ *   priv - pointer to the driver-specific state structure
+ *   mac  - pointer to the array representing the MAC address
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise ERROR is returned.
+ *
+ ****************************************************************************/
+
 static int lan865x_rmmac(FAR struct oa_tc6_driver_s *dev,
                          FAR const uint8_t *mac)
 {
@@ -477,6 +645,24 @@ static int lan865x_ioctl(FAR struct oa_tc6_driver_s *dev, int cmd,
 
 /*****************************************************************************
  * Public Functions
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: lan865x_initialize
+ *
+ * Description:
+ *   Initialize and register the OA-TC6 and the LAN865x drivers.
+ *   This function is called by the oa_tc6_initialize upon detecting
+ *   the LAN865x MAC-PHY on the SPI, but it also can be called directly from
+ *   the board level code.
+ *
+ * Input Parameters:
+ *   spi    - pointer to the intitialized spi interface
+ *   config - pointer to the initialized MAC-PHY configuration
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
  ****************************************************************************/
 
 int lan865x_initialize(FAR struct spi_dev_s *spi,

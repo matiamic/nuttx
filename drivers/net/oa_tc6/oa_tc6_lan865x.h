@@ -35,8 +35,6 @@
 
 #define OA_TC6_LAN865x_PHYID 0x0007C1B4U
 
-#define LAN865x_MAC_ADDRESS_LOW 0x00ABCDEFU
-
 /* Registers specific to the LAN865x */
 
 #define LAN865x_MAC_NCR_MMS         1
@@ -68,6 +66,24 @@ extern "C"
 
 /****************************************************************************
  * Public Function Prototypes
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: lan865x_initialize
+ *
+ * Description:
+ *   Initialize and register the OA-TC6 and the LAN865x drivers.
+ *   This function is called by the oa_tc6_initialize upon detecting
+ *   the LAN865x MAC-PHY on the SPI, but it also can be called directly from
+ *   the board level code.
+ *
+ * Input Parameters:
+ *   spi    - pointer to the intitialized spi interface
+ *   config - pointer to the initialized MAC-PHY configuration
+ *
+ * Returned Value:
+ *   On success OK is returned, otherwise negated errno is returned.
+ *
  ****************************************************************************/
 
 int lan865x_initialize(struct spi_dev_s *spi,
