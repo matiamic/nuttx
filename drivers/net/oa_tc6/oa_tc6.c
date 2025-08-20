@@ -616,6 +616,10 @@ static void oa_tc6_io_work(FAR void *arg)
     {
       nerr("Error: Chunk exchange failed\n");
 
+      /* Reset buffers, effectively dropping frames */
+
+      oa_tc6_reset_driver_buffers(priv);
+
       /* Plan the interrupt work to try and find out what's going on */
 
       work_queue(OA_TC6_WORK, &priv->interrupt_work,
@@ -739,6 +743,7 @@ static bool oa_tc6_can_rx(FAR struct oa_tc6_driver_s *priv)
   priv->rx_pkt = netpkt_alloc(&priv->dev, NETPKT_RX);
   if (priv->rx_pkt)
     {
+      priv->rx_pkt_idx = 0;
       return true;
     }
 
@@ -809,7 +814,15 @@ static void oa_tc6_handle_rx_chunk(FAR struct oa_tc6_driver_s *priv,
     {
       if (oa_tc6_start_valid(footer))
         {
+          /* When the end chunk is lost, this will save the upcoming frame */
+
           priv->rx_pkt_idx = 0;
+        }
+      else if (priv->rx_pkt_idx == 0)
+        {
+          /* Skip to the start of the next frame */
+
+          return;
         }
 
       if (oa_tc6_end_valid(footer))
@@ -1749,9 +1762,11 @@ static FAR netpkt_t *oa_tc6_receive(FAR struct netdev_lowerhalf_s *dev)
 
   if (priv->rx_pkt_ready)
     {
+      FAR netpkt_t *retval = priv->rx_pkt;
+
       ninfo("Info: Received RX packet %d bytes long\n",
             netpkt_getdatalen(&priv->dev, priv->rx_pkt));
-      FAR netpkt_t *retval = priv->rx_pkt;
+
       priv->rx_pkt_ready = false;
       priv->rx_pkt = NULL;
       nxmutex_unlock(&priv->lock);

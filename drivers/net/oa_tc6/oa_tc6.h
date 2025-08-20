@@ -333,16 +333,14 @@ struct oa_tc6_driver_s
   struct netdev_lowerhalf_s dev;   /* Driver data visible by the net stack
                                     * (must be placed first)               */
 
-  uint8_t mac_addr[6];             /* MAC address of the interface         */
-
   uint8_t *txbuf;                  /* SPI transfer buffers                 */
   uint8_t *rxbuf;
 
   mutex_t lock;                    /* Lock for data race prevention        */
   FAR struct spi_dev_s *spi;       /* The SPI device instance              */
-  int irqnum;                      /* irq number of the interrupt pin      */
   struct oa_tc6_config_s *config;  /* Driver configuration                 */
   enum oa_tc6_ifstate_e ifstate;   /* Driver state                         */
+  uint8_t mac_addr[6];             /* MAC address of the interface         */
 
   struct work_s interrupt_work;    /* wq handle for the interrupt work     */
   struct work_s recovery_work;     /* wq handle for the SPI recovery work  */
