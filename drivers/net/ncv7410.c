@@ -163,7 +163,7 @@ static void ncv_release_rx_packet(FAR struct ncv7410_driver_s *priv);
 static inline void ncv_select_spi(FAR struct ncv7410_driver_s *priv);
 static inline void ncv_deselect_spi(FAR struct ncv7410_driver_s *priv);
 
-/* NCV7410 reset and configuration */
+/* ncv7410 reset and configuration */
 
 static int ncv_reset(FAR struct ncv7410_driver_s *priv);
 static int ncv_config(FAR struct ncv7410_driver_s *priv);
@@ -1157,7 +1157,7 @@ static int ncv_config(FAR struct ncv7410_driver_s *priv)
 
 #endif
 
-  /* enable RX buffer overflow interrupt */
+  /* enable rx buffer overflow interrupt */
 
   regval = OA_IMSK0_DEF & ~(1 << OA_IMSK0_RXBOEM_POS);
 
@@ -1611,7 +1611,7 @@ int ncv7410_initialize(FAR struct spi_dev_s *spi, int irq,
   priv->irqnum = irq;    /* Save the Interrupt Request Number       */
   priv->config = config; /* Save the reference to the configuration */
 
-  /* Reset the NCV7410 chip */
+  /* Reset NCV7410 chip */
 
   if (ncv_reset(priv))
     {

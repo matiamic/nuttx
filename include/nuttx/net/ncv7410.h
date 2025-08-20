@@ -68,9 +68,8 @@ struct ncv7410_config_s
  *   Initialize the Ethernet driver.
  *
  * Input Parameters:
- *   spi    - reference to the SPI driver state data
- *   irq    - irq number of the pin connected to MAC-PHY's interrupt signal
- *   config - TODO
+ *   spi - reference to the SPI driver state data
+ *   irq - irq number of the pin connected to MAC-PHY's interrupt signal
  *
  * Returned Value:
  *   On success OK is returned, otherwise negated errno is returned.
