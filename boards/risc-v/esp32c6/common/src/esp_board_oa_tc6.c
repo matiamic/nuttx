@@ -45,12 +45,12 @@
  * Private Function Prototypes
  ****************************************************************************/
 
-static int esp_board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
-                                   xcpt_t handler,
-                                   FAR void *arg);
+static int board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
+                               xcpt_t handler,
+                               FAR void *arg);
 
-static int esp_board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
-                                   bool enable);
+static int board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
+                               bool enable);
 
 /****************************************************************************
  * Private Data
@@ -63,16 +63,16 @@ static struct oa_tc6_config_s g_esp_oa_tc6_config =
   .chunk_payload_size = 64,
   .rx_cut_through     = true,
   .interrupt_pin      = 5,
-  .attach             = esp_board_oa_tc6_attach,
-  .enable             = esp_board_oa_tc6_enable,
+  .attach             = board_oa_tc6_attach,
+  .enable             = board_oa_tc6_enable,
 };
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
 
-static int esp_board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
-                                   xcpt_t handler, FAR void *arg)
+static int board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
+                               xcpt_t handler, FAR void *arg)
 {
   esp_configgpio(config->interrupt_pin, INPUT_FUNCTION_2 | PULLUP);
   irq_attach(ESP_PIN2IRQ(config->interrupt_pin), handler, arg);
@@ -80,7 +80,8 @@ static int esp_board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
   return OK;
 }
 
-static int esp_board_oa_tc6_enable(FAR struct oa_tc6_config_s *config, bool enable)
+static int board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
+                               bool enable)
 {
   if (enable)
     {
