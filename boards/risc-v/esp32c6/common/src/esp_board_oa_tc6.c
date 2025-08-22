@@ -42,6 +42,12 @@
 #include "espressif/esp_gpio.h"
 
 /****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+#define BOARD_OA_TC6_0_INT_PIN 5
+
+/****************************************************************************
  * Private Function Prototypes
  ****************************************************************************/
 
@@ -62,7 +68,6 @@ static struct oa_tc6_config_s g_esp_oa_tc6_config =
   .frequency          = 20000000,
   .chunk_payload_size = 64,
   .rx_cut_through     = true,
-  .interrupt_pin      = 5,
   .attach             = board_oa_tc6_attach,
   .enable             = board_oa_tc6_enable,
 };
@@ -71,25 +76,55 @@ static struct oa_tc6_config_s g_esp_oa_tc6_config =
  * Private Functions
  ****************************************************************************/
 
+/* TODO: documentation */
+
 static int board_oa_tc6_attach(FAR struct oa_tc6_config_s *config,
                                xcpt_t handler, FAR void *arg)
 {
-  esp_configgpio(config->interrupt_pin, INPUT_FUNCTION_2 | PULLUP);
-  irq_attach(ESP_PIN2IRQ(config->interrupt_pin), handler, arg);
+  int pin;
+
+  switch(config->id)
+    {
+      case SPIDEV_ETHERNET(0):
+          pin = BOARD_OA_TC6_0_INT_PIN;
+          break;
+      default:
+          /* Unknown id */
+
+          DEBUGPANIC();
+    }
+
+  esp_configgpio(pin, INPUT_FUNCTION_2 | PULLUP);
+  irq_attach(ESP_PIN2IRQ(pin), handler, arg);
 
   return OK;
 }
 
+/* TODO: documentation */
+
 static int board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
                                bool enable)
 {
+  int pin;
+
+  switch(config->id)
+    {
+      case SPIDEV_ETHERNET(0):
+          pin = BOARD_OA_TC6_0_INT_PIN;
+          break;
+      default:
+          /* Unknown id */
+
+          DEBUGPANIC();
+    }
+
   if (enable)
     {
-      esp_gpioirqenable(ESP_PIN2IRQ(config->interrupt_pin), FALLING);
+      esp_gpioirqenable(ESP_PIN2IRQ(pin), FALLING);
     }
   else
     {
-      esp_gpioirqdisable(ESP_PIN2IRQ(config->interrupt_pin));
+      esp_gpioirqdisable(ESP_PIN2IRQ(pin));
     }
 
   return OK;
@@ -103,7 +138,7 @@ static int board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
  * Name: board_oa_tc6_initialize
  *
  * Description:
- *   Initialize and register the OA-TC6 10BASE-T1S network driver.
+ *   Initialize and register the OA-TC6 10BASE-T1x network driver.
  *
  * Input Parameters:
  *   None
@@ -113,7 +148,7 @@ static int board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
  *
  ****************************************************************************/
 
-void board_oa_tc6_initialize(void)
+int board_oa_tc6_initialize(void)
 {
   FAR struct spi_dev_s *spi;
   int ret;
@@ -123,10 +158,10 @@ void board_oa_tc6_initialize(void)
     {
       syslog(LOG_ERR,
              "ERROR: Failed to initialize SPI port %d\n", ESPRESSIF_SPI2);
-      return;
+      return -ENODEV;
     }
 
-  /* Bind the SPI port and config to the OA driver */
+  /* Bind the SPI port and config to the OA-TC6 driver */
 
   ret = oa_tc6_initialize(spi, &g_esp_oa_tc6_config);
   if (ret < 0)
@@ -134,9 +169,11 @@ void board_oa_tc6_initialize(void)
       syslog(LOG_ERR,
              "ERROR: Failed to bind SPI port and config to the OA"
              " network driver: %d\n", ret);
-      return;
+      return ret;
     }
 
   syslog(LOG_INFO,
          "Bound SPI and config to the OA network driver\n");
+
+  return OK;
 }

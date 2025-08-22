@@ -53,21 +53,20 @@ extern "C"
 
 struct oa_tc6_config_s
 {
-  uint32_t id;                /* Field used to guide SPI chip select   */
+  uint32_t id;                /* Field used to guide SPI chip select
+                                 and interrupt pin selection           */
 
   uint32_t frequency;         /* SPI frequency                         */
   uint8_t chunk_payload_size; /* 64, 32, 16, or 8. 0 defaults to 64    */
   bool rx_cut_through;        /* Enable / disable RX cut through mode  */
 
-  int interrupt_pin;          /* The pin used for the interrupt signal */
-
-  /* The attach callback attaches handler to the falling edge
-   * of the interrupt pin.
-   * The enable callback enables / disables the interrupt.
-   */
+  /* Attach handler to the falling edge of the interrupt pin. */
 
   CODE int  (*attach)(FAR struct oa_tc6_config_s *config, xcpt_t handler,
                       FAR void *arg);
+
+  /* Enable / disable the interrupt. */
+
   CODE int (*enable)(FAR struct oa_tc6_config_s *config, bool enable);
 };
 

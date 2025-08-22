@@ -1332,7 +1332,7 @@ static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
 
 static int oa_tc6_update_mac_filter(FAR struct oa_tc6_driver_s *priv)
 {
-  if (!memcmp(&priv->mac_addr, &priv->dev.netdev.d_mac.ether, 6))
+  if (!memcmp(&priv->mac_addr, &priv->dev.netdev.d_mac.ether, IFHWADDRLEN))
     {
       return OK;
     }
@@ -1349,7 +1349,7 @@ static int oa_tc6_update_mac_filter(FAR struct oa_tc6_driver_s *priv)
       return ERROR;
     }
 
-  memcpy(priv->mac_addr, &priv->dev.netdev.d_mac.ether, 6);
+  memcpy(priv->mac_addr, &priv->dev.netdev.d_mac.ether, IFHWADDRLEN);
   return OK;
 }
 
@@ -2045,8 +2045,8 @@ int oa_tc6_set_clear_bits(FAR struct oa_tc6_driver_s *priv,
 void oa_tc6_store_mac_addr(FAR struct oa_tc6_driver_s *priv,
                            FAR uint8_t *mac)
 {
-  memcpy(&priv->dev.netdev.d_mac.ether, mac, sizeof(struct ether_addr));
-  memcpy(&priv->mac_addr, mac, 6);
+  memcpy(&priv->dev.netdev.d_mac.ether.ether_addr_octet, mac, IFHWADDRLEN);
+  memcpy(&priv->mac_addr, mac, IFHWADDRLEN);
 }
 
 /****************************************************************************
