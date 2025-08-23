@@ -455,53 +455,47 @@ static void oa_tc6_recovery_work(FAR void *arg)
 
   if (priv->ifstate != OA_TC6_IFSTATE_UP_RECOVERY)
     {
-      nxmutex_unlock(&priv->lock);
       nwarn("Warning: Trying to recover when not in recovery\n");
+      nxmutex_unlock(&priv->lock);
       return;
     }
 
   if (oa_tc6_read_reg(priv, OA_TC6_CONFIG0_REGID, &regval))
     {
       nwarn("Warning: MAC-PHY still not available\n");
-      goto errout;
+
+      work_queue(OA_TC6_WORK, &priv->recovery_work,
+                 oa_tc6_recovery_work, priv,
+                 MSEC2TICK(OA_TC6_RECOVERY_WORK_INTERVAL_MS));
+
+      nxmutex_unlock(&priv->lock);
+      return;
     }
 
   ninfo("Info: Reading register successful during recovery\n");
 
   if (!oa_tc6_get_field(regval, CONFIG0_SYNC))
     {
-      /* MAC-PHY lost config, perform reset and reconfigure */
+      /* MAC-PHY has lost config. Shut down */
 
-      if (oa_tc6_reset(priv))
-        {
-          nwarn("Warning: Reset unsuccessful during recovery\n");
-          goto errout;
-        }
+      nwarn("Warning: MAC-PHY has lost config (SYNC = '0'), shutting down\n");
 
-      if (oa_tc6_config(priv))
-        {
-          nwarn("Warning: Configuration unsuccessful during recovery\n");
-          goto errout;
-        }
+      priv->ifstate = OA_TC6_IFSTATE_UP_UNKNOWN;
 
-      if (oa_tc6_enable(priv))
-        {
-          nwarn("Warning: Enable unsuccessful during recovery\n");
-          goto errout;
-        }
+      /* Unlock before shutting down, otherwise would result in deadlock */
+
+      nxmutex_unlock(&priv->lock);
+
+      net_lock();
+      netdev_ifdown(&priv->dev.netdev);
+      net_unlock();
+
+      return;
     }
 
   ninfo("Info: MAC-PHY SPI contact successful, exiting recovery\n");
 
   oa_tc6_exit_recovery(priv);
-
-  nxmutex_unlock(&priv->lock);
-  return;
-
-errout:
-  work_queue(OA_TC6_WORK, &priv->recovery_work,
-             oa_tc6_recovery_work, priv,
-             MSEC2TICK(OA_TC6_RECOVERY_WORK_INTERVAL_MS));
 
   nxmutex_unlock(&priv->lock);
 }
@@ -603,8 +597,8 @@ static void oa_tc6_io_work(FAR void *arg)
 
   if (priv->ifstate != OA_TC6_IFSTATE_UP)
     {
-      nxmutex_unlock(&priv->lock);
       nerr("Error: Trying to work when the interface is not up\n");
+      nxmutex_unlock(&priv->lock);
       return;
     }
 
@@ -624,6 +618,7 @@ static void oa_tc6_io_work(FAR void *arg)
 
       work_queue(OA_TC6_WORK, &priv->interrupt_work,
                  oa_tc6_interrupt_work, priv, 0);
+
       nxmutex_unlock(&priv->lock);
       return;
     }
@@ -958,6 +953,9 @@ static void oa_tc6_select_spi(FAR struct oa_tc6_driver_s *priv)
   SPI_SETBITS(priv->spi, OA_TC6_SPI_NBITS);
   SPI_HWFEATURES(priv->spi, 0);  /* disable HW features */
   SPI_SETFREQUENCY(priv->spi, priv->config->frequency);
+#ifdef CONFIG_SPI_DELAY_CONTROL
+  SPI_SETDELAY(priv->spi, 0, 0, 0, 0);
+#endif
 
   SPI_SELECT(priv->spi, priv->config->id, true);
 }
@@ -1090,7 +1088,7 @@ static int oa_tc6_init_by_id(FAR struct spi_dev_s *spi,
           return lan865x_initialize(spi, config);
 #endif
       default:
-          nerr("Error: Unknown PHYID 0x%08X. "
+          nerr("Error: Unknown PHYID 0x%08lX. "
                "Is the support enabled in Kconfig? "
                "Does the revision match?\n", phyid);
           return -EINVAL;
@@ -1296,13 +1294,6 @@ static int oa_tc6_disable(FAR struct oa_tc6_driver_s *priv)
 
   if (priv->ops->action(priv, OA_TC6_ACTION_DISABLE))
     {
-      if (priv->ifstate == OA_TC6_IFSTATE_UP_RECOVERY)
-        {
-          /* Allow disable in recovery mode */
-
-          return OK;
-        }
-
       nerr("Error: Disable on the device-specific level failed\n");
       return ERROR;
     }
@@ -1412,6 +1403,7 @@ static int oa_tc6_read_mii(FAR struct oa_tc6_driver_s *priv,
   oa_tc6_regid_t regid =
     OA_TC6_MAKE_REGID(OA_TC6_MII_BASE_MMS,
                       OA_TC6_MII_BASE_ADDR + (req->reg_num & 0x1F));
+
   if (oa_tc6_read_reg(priv, regid, &regval))
     {
       return -EIO;
@@ -1445,6 +1437,7 @@ static int oa_tc6_write_mii(FAR struct oa_tc6_driver_s *priv,
   oa_tc6_regid_t regid =
     OA_TC6_MAKE_REGID(OA_TC6_MII_BASE_MMS,
                       OA_TC6_MII_BASE_ADDR + (req->reg_num & 0x1F));
+
   if (oa_tc6_write_reg(priv, regid, regval))
     {
       return -EIO;
@@ -1500,6 +1493,7 @@ static int oa_tc6_get_mmd_base(uint8_t mmd,
           *addr = OA_TC6_MMD_31_BASE_ADDR;
           return OK;
     }
+
   return ERROR;
 }
 
@@ -1525,13 +1519,15 @@ static int oa_tc6_read_mmd(FAR struct oa_tc6_driver_s *priv,
   uint32_t regval;
   uint8_t mms;
   uint16_t base_addr;
+  oa_tc6_regid_t regid;
+
   if (oa_tc6_get_mmd_base(req->mmd, &mms, &base_addr))
     {
       return -EINVAL;
     }
 
-  oa_tc6_regid_t regid =
-    OA_TC6_MAKE_REGID(mms, base_addr + req->addr);
+  regid = OA_TC6_MAKE_REGID(mms, base_addr + req->addr);
+
   if (oa_tc6_read_reg(priv, regid, &regval))
     {
       return -EIO;
@@ -1564,12 +1560,15 @@ static int oa_tc6_write_mmd(FAR struct oa_tc6_driver_s *priv,
   uint32_t regval = req->data;
   uint8_t mms;
   uint16_t base_addr;
+  oa_tc6_regid_t regid;
+
   if (oa_tc6_get_mmd_base(req->mmd, &mms, &base_addr))
     {
       return -EINVAL;
     }
-  oa_tc6_regid_t regid =
-    OA_TC6_MAKE_REGID(mms, base_addr + req->addr);
+
+  regid = OA_TC6_MAKE_REGID(mms, base_addr + req->addr);
+
   if (oa_tc6_write_reg(priv, regid, regval))
     {
       return -EIO;
@@ -1602,22 +1601,35 @@ static int oa_tc6_ifup(FAR struct netdev_lowerhalf_s *dev)
 
   nxmutex_lock(&priv->lock);
 
-  if (   priv->ifstate == OA_TC6_IFSTATE_UP
-      || priv->ifstate == OA_TC6_IFSTATE_UP_RECOVERY)
+  if (   priv->ifstate != OA_TC6_IFSTATE_RESET
+      && priv->ifstate != OA_TC6_IFSTATE_DOWN
+      && priv->ifstate != OA_TC6_IFSTATE_DOWN_UNKNOWN)
     {
+      nerr("Error: Tried to bring OA-TC6 interface up when not down\n");
       nxmutex_unlock(&priv->lock);
-      nerr("Error: Tried to bring OA-TC6 interface up when already up\n");
       return -EINVAL;
     }
 
   ninfo("Info: Bringing up OA-TC6\n");
 
+  if (priv->ifstate == OA_TC6_IFSTATE_DOWN_UNKNOWN)
+    {
+      if (oa_tc6_reset(priv))
+        {
+          nerr("Error: Reset of the OA-TC6 failed\n");
+          nxmutex_unlock(&priv->lock);
+          return -EIO;
+        }
+
+      priv->ifstate = OA_TC6_IFSTATE_RESET;
+    }
+
   if (priv->ifstate == OA_TC6_IFSTATE_RESET)
     {
-      if (oa_tc6_config(priv) == ERROR)
+      if (oa_tc6_config(priv))
         {
+          nerr("Error: Config of the OA-TC6 failed\n");
           nxmutex_unlock(&priv->lock);
-          nerr("Error: Configuration of the OA-TC6 failed\n");
           return -EIO;
         }
 
@@ -1626,27 +1638,26 @@ static int oa_tc6_ifup(FAR struct netdev_lowerhalf_s *dev)
 
   if (oa_tc6_update_mac_filter(priv))
     {
-      nxmutex_unlock(&priv->lock);
       nerr("Error: Error during MAC address filter update\n");
+      nxmutex_unlock(&priv->lock);
       return -EIO;
     }
 
-  if (oa_tc6_enable(priv) == ERROR)
+  if (oa_tc6_enable(priv))
     {
-      nxmutex_unlock(&priv->lock);
       nerr("Error: Enabling of the OA-TC6 interface failed\n");
+      nxmutex_unlock(&priv->lock);
       return -EIO;
     }
 
   priv->ifstate = OA_TC6_IFSTATE_UP;
-
-  nxmutex_unlock(&priv->lock);
 
   /* Schedule interrupt work to initialize txc and rca */
 
   work_queue(OA_TC6_WORK, &priv->interrupt_work,
              oa_tc6_interrupt_work, priv, 0);
 
+  nxmutex_unlock(&priv->lock);
   return OK;
 }
 
@@ -1671,29 +1682,38 @@ static int oa_tc6_ifdown(FAR struct netdev_lowerhalf_s *dev)
   nxmutex_lock(&priv->lock);
 
   if (   priv->ifstate != OA_TC6_IFSTATE_UP
-      && priv->ifstate != OA_TC6_IFSTATE_UP_RECOVERY)
+      && priv->ifstate != OA_TC6_IFSTATE_UP_RECOVERY
+      && priv->ifstate != OA_TC6_IFSTATE_UP_UNKNOWN)
     {
-      nxmutex_unlock(&priv->lock);
       nerr("Error: Tried to bring the OA-TC6 interface down when not up\n");
+      nxmutex_unlock(&priv->lock);
       return -EINVAL;
     }
 
   work_cancel(OA_TC6_WORK, &priv->interrupt_work);
   work_cancel(OA_TC6_WORK, &priv->io_work);
 
-  if (oa_tc6_disable(priv) == ERROR)
+  /* Allow disable to fail in recovery or unknown */
+
+  if (oa_tc6_disable(priv) && priv->ifstate == OA_TC6_IFSTATE_UP)
     {
-      nxmutex_unlock(&priv->lock);
       nerr("Error: Disabling the OA-TC6 interface failed\n");
+      nxmutex_unlock(&priv->lock);
       return -EIO;
     }
 
   oa_tc6_reset_driver_buffers(priv);
 
-  priv->ifstate = OA_TC6_IFSTATE_DOWN;
+  if (priv->ifstate == OA_TC6_IFSTATE_UP_UNKNOWN)
+    {
+      priv->ifstate = OA_TC6_IFSTATE_DOWN_UNKNOWN;
+    }
+  else
+    {
+      priv->ifstate = OA_TC6_IFSTATE_DOWN;
+    }
 
   nxmutex_unlock(&priv->lock);
-
   return OK;
 }
 
@@ -1733,9 +1753,9 @@ static int oa_tc6_transmit(FAR struct netdev_lowerhalf_s *dev,
   priv->tx_pkt_len = netpkt_getdatalen(dev, pkt);
   priv->tx_pkt = pkt;
 
-  nxmutex_unlock(&priv->lock);
-
   work_queue(OA_TC6_WORK, &priv->io_work, oa_tc6_io_work, priv, 0);
+
+  nxmutex_unlock(&priv->lock);
   return OK;
 }
 
@@ -1769,12 +1789,12 @@ static FAR netpkt_t *oa_tc6_receive(FAR struct netdev_lowerhalf_s *dev)
 
       priv->rx_pkt_ready = false;
       priv->rx_pkt = NULL;
+
       nxmutex_unlock(&priv->lock);
       return retval;
     }
 
   nxmutex_unlock(&priv->lock);
-
   return NULL;
 }
 

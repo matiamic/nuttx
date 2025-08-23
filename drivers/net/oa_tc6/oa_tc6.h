@@ -293,10 +293,12 @@ typedef uint32_t oa_tc6_regid_t;
 
 enum oa_tc6_ifstate_e
 {
-  OA_TC6_IFSTATE_RESET,       /* The i/f is not configured after reset    */
-  OA_TC6_IFSTATE_DOWN,        /* The i/f is configured, but disabled      */
-  OA_TC6_IFSTATE_UP,          /* The i/f is configured and enabled        */
-  OA_TC6_IFSTATE_UP_RECOVERY, /* The i/f is enabled, but SPI lost contact */
+  OA_TC6_IFSTATE_RESET,        /* The i/f is not configured after reset    */
+  OA_TC6_IFSTATE_DOWN,         /* The i/f is configured, but disabled      */
+  OA_TC6_IFSTATE_DOWN_UNKNOWN, /* The i/f is down after config is lost     */
+  OA_TC6_IFSTATE_UP,           /* The i/f is configured and enabled        */
+  OA_TC6_IFSTATE_UP_RECOVERY,  /* The i/f is enabled, but SPI lost contact */
+  OA_TC6_IFSTATE_UP_UNKNOWN,   /* The i/f is still up after config is lost */
 };
 
 enum oa_tc6_action_e
