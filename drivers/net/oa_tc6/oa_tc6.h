@@ -59,8 +59,7 @@
 
 #define OA_TC6_SPI_NBITS 8
 
-#define OA_TC6_CHUNK_MAX_PAYLOAD_SIZE 64
-#define OA_TC6_CHUNK_MAX_SIZE (OA_TC6_CHUNK_MAX_PAYLOAD_SIZE + 4)
+#define OA_TC6_CHUNK_SIZE(dev) ((dev)->config->chunk_payload_size + 4)
 
 typedef uint32_t oa_tc6_regid_t;
 

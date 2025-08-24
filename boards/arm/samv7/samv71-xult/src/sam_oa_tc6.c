@@ -62,7 +62,7 @@ static int board_oa_tc6_enable(FAR struct oa_tc6_config_s *config,
 static struct oa_tc6_config_s g_esp_oa_tc6_config =
 {
   .id                 = SPIDEV_ETHERNET(0),
-  .frequency          = 20000000,
+  .frequency          = 25000000,
   .chunk_payload_size = 64,
   .rx_cut_through     = true,
   .attach             = board_oa_tc6_attach,

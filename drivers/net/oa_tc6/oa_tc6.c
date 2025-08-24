@@ -292,16 +292,13 @@ static int oa_tc6_exchange_chunk(FAR struct oa_tc6_driver_s *priv,
   header |= (!oa_tc6_get_parity(header) << OA_TC6_P_POS);
   header = htobe32(header);
 
+  ((uint32_t *)txbuf)[0] = header;
+
   oa_tc6_select_spi(priv);
-
-  /* This depends on SW Chip Select */
-
-  SPI_EXCHANGE(priv->spi, (uint8_t *)&header, rxbuf, 4);
-  SPI_EXCHANGE(priv->spi, txbuf,
-               &rxbuf[4], priv->config->chunk_payload_size - 4);
-  SPI_EXCHANGE(priv->spi, &txbuf[priv->config->chunk_payload_size - 4],
-               (uint8_t *)footer, 4);
+  SPI_EXCHANGE(priv->spi, txbuf, rxbuf, OA_TC6_CHUNK_SIZE(priv));
   oa_tc6_deselect_spi(priv);
+
+  *footer = *((uint32_t *)(&rxbuf[priv->config->chunk_payload_size]));
 
   *footer = be32toh(*footer);
   if (!oa_tc6_get_parity(*footer))
@@ -686,9 +683,9 @@ static uint32_t oa_tc6_prep_chunk_exchange(FAR struct oa_tc6_driver_s *priv,
           txlen = priv->config->chunk_payload_size;
         }
 
-      /* Copy data from network to txbuf */
+      /* Copy data from network to txbuf, leave 4 bytes for header */
 
-      netpkt_copyout(&priv->dev, txbuf, priv->tx_pkt,
+      netpkt_copyout(&priv->dev, &txbuf[4], priv->tx_pkt,
                      txlen, priv->tx_pkt_idx);
       priv->tx_pkt_idx += txlen;
     }
@@ -2217,10 +2214,20 @@ int oa_tc6_common_init(FAR struct oa_tc6_driver_s *priv,
 
   /* Allocate SPI buffers based on the config */
 
-  priv->txbuf = kmm_malloc(config->chunk_payload_size);
-  priv->rxbuf = kmm_malloc(config->chunk_payload_size);
+  priv->txbuf = kmm_malloc(OA_TC6_CHUNK_SIZE(priv));
+  priv->rxbuf = kmm_malloc(OA_TC6_CHUNK_SIZE(priv));
   if ((priv->txbuf == NULL) || (priv->rxbuf == NULL))
     {
+      if (priv->txbuf)
+        {
+          kmm_free(priv->txbuf);
+        }
+
+      if (priv->rxbuf)
+        {
+          kmm_free(priv->rxbuf);
+        }
+
       nerr("Error: Could not allocate memory for SPI buffers\n");
       return -ENOMEM;
     }
