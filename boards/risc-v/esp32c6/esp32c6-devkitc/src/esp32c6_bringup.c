@@ -129,6 +129,10 @@
 #  include "espressif/esp_sha.h"
 #endif
 
+#ifdef CONFIG_NET_OA_TC6
+#  include "esp_board_oa_tc6.h"
+#endif
+
 #ifdef CONFIG_MMCSD_SPI
 #  include "esp_board_mmcsd.h"
 #endif
@@ -496,6 +500,14 @@ int esp_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: board_adc_init failed: %d\n", ret);
+    }
+#endif
+
+#ifdef CONFIG_NET_OA_TC6
+  ret = board_oa_tc6_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: esp_oa_tc6_initialize failed: %d\n", ret);
     }
 #endif
 
