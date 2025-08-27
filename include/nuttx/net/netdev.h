@@ -216,6 +216,18 @@
      (netdev_ipv6_lookup(dev, addr, true) != NULL)
 #endif
 
+/* MDIO Manageable Device (MMD) support with SIOCxMIIREG ioctl commnads */
+
+#define mdio_phy_id_is_c45(phy_id) \
+    ((bool)(((phy_id) & MDIO_PHY_ID_C45) && \
+            !((phy_id) & ~MDIO_PHY_ID_C45_MASK)))
+
+#define mdio_phy_id_prtad(phy_id) \
+    ((uint16_t)(((phy_id) & MDIO_PHY_ID_PRTAD) >> 5))
+
+#define mdio_phy_id_devad(phy_id) \
+    ((uint16_t)((phy_id) & MDIO_PHY_ID_DEVAD))
+
 /****************************************************************************
  * Public Types
  ****************************************************************************/
