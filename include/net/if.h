@@ -127,6 +127,12 @@
 #  define IFF_IS_IPv4(f)   (1)
 #endif
 
+/* MDIO Manageable Device (MMD) support with SIOCxMIIREG commnads */
+
+#define MDIO_PHY_ID_C45 0x8000
+#define mdio_phy_id_c45(prtad, devad) \
+    ((uint16_t)(MDIO_PHY_ID_C45 | prtad << 5 | devid))
+
 /* RFC 2863 operational status */
 
 enum
