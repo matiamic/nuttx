@@ -114,4 +114,8 @@ ifeq ($(CONFIG_MMCSD),y)
 CSRCS += stm32_mmcsd.c
 endif
 
+ifeq ($(CONFIG_NET_OA_TC6), y)
+CSRCS += stm32_oa_tc6.c
+endif
+
 include $(TOPDIR)/boards/Board.mk

@@ -486,5 +486,9 @@ int stm32_bringup(void)
   stm32_iwdginitialize("/dev/watchdog0", STM32_LSI_FREQUENCY);
 #endif
 
+#ifdef CONFIG_NET_OA_TC6
+  stm32_oa_tc6_initialize();
+#endif
+
   return OK;
 }

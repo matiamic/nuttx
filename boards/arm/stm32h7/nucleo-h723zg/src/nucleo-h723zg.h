@@ -208,6 +208,19 @@
 #define GPIO_MMCSD_NCD    (GPIO_INPUT | GPIO_PULLUP | GPIO_EXTI |  \
                            GPIO_PORTF | GPIO_PIN12)
 
+/* OA-TC6 SPI CS + INT signal mapping
+ * MOSI - PB5  (D22)
+ * CLK  - PB3  (D23)
+ * MISO - PB4  (D25)
+ * CS   - PD14 (D10)
+ * INT  - PF3  (D8)
+ */
+
+#define GPIO_OA_TC6_SPI_PORT 3
+#define GPIO_OA_TC6_CS  (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_SPEED_50MHz | \
+                         GPIO_OUTPUT_SET | GPIO_PORTD | GPIO_PIN14)
+#define GPIO_OA_TC6_INT (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTF | GPIO_PIN3)
+
 /* LMS9DS1 configuration */
 
 #define LMS9DS1_I2CBUS 1
@@ -403,6 +416,18 @@ int stm32_progmem_init(void);
 
 #ifdef CONFIG_MMCSD_SPI
 int stm32_mmcsd_initialize(int minor);
+#endif
+
+/****************************************************************************
+ * Name: stm32_oa_tc6_initialize
+ *
+ * Description:
+ *   Initialize OA-TC6 10BASE-T1S subsystem.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_NET_OA_TC6
+int stm32_oa_tc6_initialize(void);
 #endif
 
 #endif /* __BOARDS_ARM_STM32H7_NUCLEO_H723ZG_SRC_NUCLEO_H723ZG_H */

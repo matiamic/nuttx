@@ -78,7 +78,13 @@ void stm32_spidev_initialize(void)
   stm32_configgpio(GPIO_MMCSD_CS);
   stm32_gpiowrite(GPIO_MMCSD_CS, true);
   stm32_configgpio(GPIO_MMCSD_NCD);
-#endif
+#  endif
+#  ifdef CONFIG_NET_OA_TC6
+  /* Configure the SPI-based chip select GPIO for OA_TC6 MAC-PHYs */
+
+  stm32_configgpio(GPIO_OA_TC6_CS);
+  stm32_gpiowrite(GPIO_OA_TC6_CS, true);
+#  endif
 #endif
 }
 
@@ -156,6 +162,12 @@ void stm32_spi3select(struct spi_dev_s *dev,
 #ifdef CONFIG_MMCSD_SPI
       case SPIDEV_MMCSD(0):
         stm32_gpiowrite(GPIO_MMCSD_CS, !selected);
+        break;
+#endif
+
+#ifdef CONFIG_NET_OA_TC6
+      case SPIDEV_ETHERNET(0):
+        stm32_gpiowrite(GPIO_OA_TC6_CS, !selected);
         break;
 #endif
 

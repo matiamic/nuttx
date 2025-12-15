@@ -112,6 +112,10 @@ if(CONFIG_MMCSD)
   list(APPEND SRCS stm32_mmcsd.c)
 endif()
 
+if(CONFIG_NET_OA_TC6)
+  list(APPEND SRCS stm32_oa_tc6.c)
+endif()
+
 target_sources(board PRIVATE ${SRCS})
 
 if(CONFIG_STM32_APP_FORMAT_MCUBOOT)
