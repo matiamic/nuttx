@@ -296,7 +296,7 @@
 /* LED definitions **********************************************************/
 
 /* The Nucleo-144 board has numerous LEDs but only three, LD1 a Green LED,
- * LD2 a Blue LED and LD3 a Red LED, that can be controlled by software.
+ * LD2 a Yellow LED and LD3 a Red LED, that can be controlled by software.
  * The following definitions assume the default Solder Bridges are installed.
  *
  * If CONFIG_ARCH_LEDS is not defined, then the user can control the LEDs in
@@ -312,7 +312,7 @@
 #define BOARD_NLEDS       3
 
 #define BOARD_LED_GREEN   BOARD_LED1
-#define BOARD_LED_BLUE    BOARD_LED2
+#define BOARD_LED_YELLOW  BOARD_LED2
 #define BOARD_LED_RED     BOARD_LED3
 
 /* LED bits for use with board_userled_all() */
@@ -322,24 +322,23 @@
 #define BOARD_LED3_BIT    (1 << BOARD_LED3)
 
 /* If CONFIG_ARCH_LEDS is defined, the usage by the board port is defined in
- * include/board.h and src/stm32_leds.c.
+ * include/board.h and src/stm32_autoleds.c.
  * The LEDs are used to encode OS-related events as follows:
  *
  *
  *   SYMBOL                     Meaning                      LED state
- *                                                        Red   Green Blue
- *   ----------------------  --------------------------  ------ ------ ---
+ *                                                       Green Yellow Red
+ *   ----------------------  --------------------------  ----- ------ ---
  */
-
-#define LED_STARTED        0 /* NuttX has been started   OFF    OFF   OFF  */
-#define LED_HEAPALLOCATE   1 /* Heap has been allocated  OFF    OFF   ON   */
-#define LED_IRQSENABLED    2 /* Interrupts enabled       OFF    ON    OFF  */
-#define LED_STACKCREATED   3 /* Idle stack created       OFF    ON    ON   */
-#define LED_INIRQ          4 /* In an interrupt          N/C    N/C   GLOW */
-#define LED_SIGNAL         5 /* In a signal handler      N/C    GLOW  N/C  */
-#define LED_ASSERTION      6 /* An assertion failed      GLOW   N/C   GLOW */
-#define LED_PANIC          7 /* The system has crashed   Blink  OFF   N/C  */
-#define LED_IDLE           8 /* MCU is is sleep mode     ON     OFF   OFF  */
+#define LED_STARTED        0 /* NuttX has been started   OFF   OFF    OFF   */
+#define LED_HEAPALLOCATE   1 /* Heap has been allocated  OFF   ON     OFF   */
+#define LED_IRQSENABLED    2 /* Interrupts enabled       ON    OFF    OFF   */
+#define LED_STACKCREATED   3 /* Idle stack created       ON    ON     OFF   */
+#define LED_INIRQ          4 /* In an interrupt          N/C   GLOW   N/C   */
+#define LED_SIGNAL         5 /* In a signal handler      GLOW  N/C    N/C   */
+#define LED_ASSERTION      6 /* An assertion failed      N/C   GLOW   GLOW  */
+#define LED_PANIC          7 /* The system has crashed   OFF   N/C    Blink */
+#define LED_IDLE           8 /* MCU is is sleep mode     OFF   OFF    ON    */
 
 /* Thus if the Green LED is statically on, NuttX has successfully booted and
  * is, apparently, running normally.  If the Red LED is flashing at

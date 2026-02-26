@@ -48,7 +48,7 @@
 static const uint32_t g_ledmap[BOARD_NLEDS] =
 {
   GPIO_LED_GREEN,
-  GPIO_LED_BLUE,
+  GPIO_LED_YELLOW,
   GPIO_LED_RED,
 };
 
@@ -97,22 +97,22 @@ void board_autoled_on(int led)
       break;
 
     case LED_HEAPALLOCATE:
-      phy_set_led(BOARD_LED_BLUE, true);
+      phy_set_led(BOARD_LED_YELLOW, true);
       break;
 
     case LED_IRQSENABLED:
-      phy_set_led(BOARD_LED_BLUE, false);
+      phy_set_led(BOARD_LED_YELLOW, false);
       phy_set_led(BOARD_LED_GREEN, true);
       break;
 
     case LED_STACKCREATED:
       phy_set_led(BOARD_LED_GREEN, true);
-      phy_set_led(BOARD_LED_BLUE, true);
+      phy_set_led(BOARD_LED_YELLOW, true);
       g_initialized = true;
       break;
 
     case LED_INIRQ:
-      phy_set_led(BOARD_LED_BLUE, true);
+      phy_set_led(BOARD_LED_YELLOW, true);
       break;
 
     case LED_SIGNAL:
@@ -121,7 +121,7 @@ void board_autoled_on(int led)
 
     case LED_ASSERTION:
       phy_set_led(BOARD_LED_RED, true);
-      phy_set_led(BOARD_LED_BLUE, true);
+      phy_set_led(BOARD_LED_YELLOW, true);
       break;
 
     case LED_PANIC:
@@ -145,17 +145,17 @@ void board_autoled_off(int led)
     default:
       break;
 
+    case LED_INIRQ:
+      phy_set_led(BOARD_LED_YELLOW, false);
+      break;
+
     case LED_SIGNAL:
       phy_set_led(BOARD_LED_GREEN, false);
       break;
 
-    case LED_INIRQ:
-      phy_set_led(BOARD_LED_BLUE, false);
-      break;
-
     case LED_ASSERTION:
       phy_set_led(BOARD_LED_RED, false);
-      phy_set_led(BOARD_LED_BLUE, false);
+      phy_set_led(BOARD_LED_YELLOW, false);
       break;
 
     case LED_PANIC:

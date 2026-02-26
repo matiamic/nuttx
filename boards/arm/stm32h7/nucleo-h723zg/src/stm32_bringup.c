@@ -38,6 +38,10 @@
 #  include <nuttx/usb/usbmonitor.h>
 #endif
 
+#if defined(CONFIG_CDCACM)
+#  include <nuttx/usb/cdcacm.h>
+#endif
+
 #ifdef CONFIG_STM32H7_OTGFS
 #  include "stm32_usbhost.h"
 #endif
@@ -46,6 +50,10 @@
 
 #ifdef CONFIG_INPUT_BUTTONS
 #  include <nuttx/input/buttons.h>
+#endif
+
+#if defined(CONFIG_USERLED) && !defined(CONFIG_ARCH_LEDS)
+#  include <nuttx/leds/userled.h>
 #endif
 
 #ifdef HAVE_RTC_DRIVER
@@ -320,6 +328,16 @@ int stm32_bringup(void)
       syslog(LOG_ERR, "ERROR: btn_lower_initialize() failed: %d\n", ret);
     }
 #endif /* CONFIG_INPUT_BUTTONS */
+
+#if defined(CONFIG_USERLED) && !defined(CONFIG_ARCH_LEDS)
+  /* Register the USERLED driver */
+
+  ret = userled_lower_initialize(LED_DRIVER_PATH);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: userled_lower_initialize() failed: %d\n", ret);
+    }
+#endif /* CONFIG_USERLED */
 
 #ifdef HAVE_USBHOST
   /* Initialize USB host operation.  stm32_usbhost_initialize()

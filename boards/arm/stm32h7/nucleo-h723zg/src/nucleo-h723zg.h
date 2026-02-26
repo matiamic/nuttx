@@ -115,20 +115,20 @@
 /* LED
  *
  * The Nucleo-144 board has numerous LEDs but only three, LD1 a Green LED,
- * LD2 a Blue LED and LD3 a Red LED, that can be controlled by software. The
+ * LD2 a Yellow LED and LD3 a Red LED, that can be controlled by software. The
  * following definitions assume the default Solder Bridges are installed.
  */
 
 #define GPIO_LD1       (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_SPEED_50MHz | \
                         GPIO_OUTPUT_CLEAR | GPIO_PORTB | GPIO_PIN0)
 #define GPIO_LD2       (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_SPEED_50MHz | \
-                        GPIO_OUTPUT_CLEAR | GPIO_PORTB | GPIO_PIN7)
+                        GPIO_OUTPUT_CLEAR | GPIO_PORTE | GPIO_PIN1)
 #define GPIO_LD3       (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_SPEED_50MHz | \
                         GPIO_OUTPUT_CLEAR | GPIO_PORTB | GPIO_PIN14)
 
-#define GPIO_LED_GREEN GPIO_LD1
-#define GPIO_LED_BLUE  GPIO_LD2
-#define GPIO_LED_RED   GPIO_LD3
+#define GPIO_LED_GREEN  GPIO_LD1
+#define GPIO_LED_YELLOW GPIO_LD2
+#define GPIO_LED_RED    GPIO_LD3
 
 #define LED_DRIVER_PATH "/dev/userleds"
 
@@ -180,12 +180,14 @@
                            GPIO_OUTPUT_SET | GPIO_PORTE | GPIO_PIN4)
 #define GPIO_INT1         (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTE | GPIO_PIN5)
 
+/* TODO: cannot test */
 /* X-NUCLEO IKS01A2 */
 
 #define GPIO_LPS22HB_INT1 (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTB | GPIO_PIN10)
 #define GPIO_LSM6DSL_INT1 (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTB | GPIO_PIN4)
 #define GPIO_LSM6DSL_INT2 (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTB | GPIO_PIN5)
 
+/* TODO: cannot test */
 /* NRF24L01
  * CS  - PA4
  * CE  - PF12 (D8)
@@ -198,6 +200,7 @@
                             GPIO_OUTPUT_CLEAR | GPIO_PORTF | GPIO_PIN12)
 #define GPIO_NRF24L01_IRQ  (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTD | GPIO_PIN15)
 
+/* TODO: cannot test */
 /* MMC/SD
  * CS  - PD15 (D9)
  * NCD - PF12 (D8)
@@ -221,15 +224,18 @@
                          GPIO_OUTPUT_SET | GPIO_PORTD | GPIO_PIN14)
 #define GPIO_OA_TC6_INT (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTF | GPIO_PIN3)
 
+/* TODO: cannot test */
 /* LMS9DS1 configuration */
 
 #define LMS9DS1_I2CBUS 1
 
+/* TODO: cannot test */
 /* PCA9635 configuration */
 
 #define PCA9635_I2CBUS  1
 #define PCA9635_I2CADDR 0x40
 
+/* TODO: cannot test */
 /* Oled configuration */
 
 #define OLED_I2C_PORT   2
@@ -331,6 +337,7 @@ int stm32_usbhost_initialize(void);
  *
  ****************************************************************************/
 
+/* TODO: cannot test */
 #ifdef CONFIG_SENSORS_LSM303AGR
 int stm32_lsm6dsl_initialize(char *devpath);
 #endif
@@ -343,6 +350,7 @@ int stm32_lsm6dsl_initialize(char *devpath);
  *
  ****************************************************************************/
 
+/* TODO: cannot test */
 #ifdef CONFIG_SENSORS_LSM6DSL
 int stm32_lsm303agr_initialize(char *devpath);
 #endif
@@ -354,6 +362,7 @@ int stm32_lsm303agr_initialize(char *devpath);
  *   Initialize NRF24L01 wireless interaface.
  ****************************************************************************/
 
+/* TODO: cannot test */
 #ifdef CONFIG_WL_NRF24L01
 int stm32_wlinitialize(void);
 #endif
@@ -365,6 +374,7 @@ int stm32_wlinitialize(void);
  *   Initialize I2C-based LSM9DS1.
  ****************************************************************************/
 
+/* TODO: cannot test */
 #ifdef CONFIG_SENSORS_LSM9DS1
 int stm32_lsm9ds1_initialize(char *devpath);
 #endif
@@ -376,6 +386,7 @@ int stm32_lsm9ds1_initialize(char *devpath);
  *   Initialize I2C-based PCA9635PW LED driver.
  ****************************************************************************/
 
+/* TODO: cannot test */
 #ifdef CONFIG_PCA9635PW
 int stm32_pca9635_initialize(void);
 #endif
@@ -399,6 +410,7 @@ int stm32_pwm_setup(void);
  *   Initialize MTD drivers.
  *
  ****************************************************************************/
+/* TODO: cannot test */
 #ifdef CONFIG_MTD
 
 #ifdef HAVE_PROGMEM_CHARDEV
@@ -414,6 +426,7 @@ int stm32_progmem_init(void);
  *
  ****************************************************************************/
 
+/* TODO: cannot test */
 #ifdef CONFIG_MMCSD_SPI
 int stm32_mmcsd_initialize(int minor);
 #endif

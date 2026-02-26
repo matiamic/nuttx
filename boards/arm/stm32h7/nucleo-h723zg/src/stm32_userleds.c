@@ -50,7 +50,7 @@
 static const uint32_t g_ledcfg[BOARD_NLEDS] =
 {
   GPIO_LED_GREEN,
-  GPIO_LED_BLUE,
+  GPIO_LED_YELLOW,
   GPIO_LED_RED,
 };
 
@@ -107,8 +107,7 @@ void board_userled(int led, bool ledon)
  * Description:
  *   If CONFIG_ARCH_LEDS is defined, then NuttX will control the on-board
  *  LEDs.  If CONFIG_ARCH_LEDS is not defined, then the board_userled_all()
- *  is available to control the LED from user application logic. NOTE: since
- *  there is only a single LED on-board, this is function is not very useful.
+ *  is available to control the LED from user application logic.
  *
  ****************************************************************************/
 
