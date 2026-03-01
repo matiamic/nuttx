@@ -475,11 +475,18 @@
 /* TIM17 - General purpose 16-bit Timer (1 channels) */
 #define GPIO_TIM17_CH1IN  (GPIO_TIM17_CH1IN_1)
 
-/* OTGFS */
+/* OTGHS */
+
+/* TODO: what to do with the naming? the h723zg only has OTG_HS, but mapped to
+ * the same pins as h743zi */
 
 #define GPIO_OTGFS_DM  (GPIO_OTGFS_DM_0  | GPIO_SPEED_100MHz)
 #define GPIO_OTGFS_DP  (GPIO_OTGFS_DP_0  | GPIO_SPEED_100MHz)
 #define GPIO_OTGFS_ID  (GPIO_OTGFS_ID_0  | GPIO_SPEED_100MHz)
+
+#define GPIO_OTGHS_DM  GPIO_OTGFS_DM
+#define GPIO_OTGHS_DP  GPIO_OTGFS_DP
+#define GPIO_OTGHS_ID  GPIO_OTGFS_ID
 
 /* DMA **********************************************************************/
 

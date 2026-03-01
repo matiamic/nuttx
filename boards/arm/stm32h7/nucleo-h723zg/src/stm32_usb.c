@@ -45,8 +45,6 @@
 #include "stm32_otg.h"
 #include "nucleo-h723zg.h"
 
-#ifdef CONFIG_STM32H7_OTGFS
-
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -58,6 +56,7 @@
 #  undef HAVE_USB
 #endif
 
+// TODO: WHY this, why not in Kconfig?
 #ifndef CONFIG_NUCLEOH723ZG_USBHOST_PRIO
 #  define CONFIG_NUCLEOH723ZG_USBHOST_PRIO 100
 #endif
@@ -318,5 +317,3 @@ void stm32_usbsuspend(struct usbdev_s *dev, bool resume)
   uinfo("resume: %d\n", resume);
 }
 #endif
-
-#endif /* CONFIG_STM32_OTGFS */
