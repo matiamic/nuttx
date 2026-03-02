@@ -40,28 +40,20 @@
 
 #define HAVE_PROC            1
 #define HAVE_USBDEV          1
-#define HAVE_USBHOST         1
 #define HAVE_USBMONITOR      1
 #define HAVE_MTDCONFIG       1
 #define HAVE_PROGMEM_CHARDEV 1
 
-/* Can't support USB host or device features if USB OTG FS is not enabled */
+/* Can't support USB host or device features if USB OTG HS is not enabled */
 
-#ifndef CONFIG_STM32H7_OTGFS
+#ifndef CONFIG_STM32H7_OTGHS
 #  undef HAVE_USBDEV
-#  undef HAVE_USBHOST
 #endif
 
 /* Can't support USB device if USB device is not enabled */
 
 #ifndef CONFIG_USBDEV
 #  undef HAVE_USBDEV
-#endif
-
-/* Can't support USB host is USB host is not enabled */
-
-#ifndef CONFIG_USBHOST
-#  undef HAVE_USBHOST
 #endif
 
 /* Check if we should enable the USB monitor before starting NSH */
@@ -145,27 +137,25 @@
 
 #define GPIO_BTN_USER  (GPIO_INPUT | GPIO_FLOAT | GPIO_EXTI | GPIO_PORTC | GPIO_PIN13)
 
-/* USB OTG FS
+/* USB OTG HS
  *
- * PA9  OTG_FS_VBUS VBUS sensing (also connected to the green LED)
- * PG6  OTG_FS_PowerSwitchOn
- * PG7  OTG_FS_Overcurrent
+ * PA9  OTG_HS_VBUS VBUS sensing (also connected to the green LED)
+ * PG6  OTG_HS_PowerSwitchOn
+ * PG7  OTG_HS_Overcurrent
  */
 
 #define GPIO_OTGFS_VBUS   (GPIO_INPUT|GPIO_FLOAT|GPIO_SPEED_100MHz| \
                            GPIO_OPENDRAIN|GPIO_PORTA|GPIO_PIN9)
 
 #define GPIO_OTGFS_PWRON  (GPIO_OUTPUT|GPIO_FLOAT|GPIO_SPEED_100MHz|  \
-                           GPIO_PUSHPULL|GPIO_PORTG|GPIO_PIN6)
+                           GPIO_PUSHPULL|GPIO_PORTD|GPIO_PIN10)
 
-#ifdef CONFIG_USBHOST
-#  define GPIO_OTGFS_OVER (GPIO_INPUT|GPIO_EXTI|GPIO_FLOAT| \
-                           GPIO_SPEED_100MHz|GPIO_PUSHPULL| \
-                           GPIO_PORTG|GPIO_PIN7)
-#else
-#  define GPIO_OTGFS_OVER (GPIO_INPUT|GPIO_FLOAT|GPIO_SPEED_100MHz| \
-                           GPIO_PUSHPULL|GPIO_PORTG|GPIO_PIN7)
-#endif
+#define GPIO_OTGFS_OVER (GPIO_INPUT|GPIO_FLOAT|GPIO_SPEED_100MHz| \
+                         GPIO_PUSHPULL|GPIO_PORTG|GPIO_PIN7)
+
+#define GPIO_OTGHS_VBUS   GPIO_OTGFS_VBUS
+#define GPIO_OTGHS_PWRON  GPIO_OTGFS_PWRON
+#define GPIO_OTGHS_OVER   GPIO_OTGFS_OVER
 
 /* GPIO pins used by the GPIO Subsystem */
 
@@ -180,37 +170,6 @@
                            GPIO_OUTPUT_SET | GPIO_PORTE | GPIO_PIN4)
 #define GPIO_INT1         (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTE | GPIO_PIN5)
 
-/* TODO: cannot test */
-/* X-NUCLEO IKS01A2 */
-
-#define GPIO_LPS22HB_INT1 (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTB | GPIO_PIN10)
-#define GPIO_LSM6DSL_INT1 (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTB | GPIO_PIN4)
-#define GPIO_LSM6DSL_INT2 (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTB | GPIO_PIN5)
-
-/* TODO: cannot test */
-/* NRF24L01
- * CS  - PA4
- * CE  - PF12 (D8)
- * IRQ - PD15 (D9)
- */
-
-#define GPIO_NRF24L01_CS   (GPIO_OUTPUT | GPIO_SPEED_50MHz| \
-                            GPIO_OUTPUT_SET | GPIO_PORTA | GPIO_PIN4)
-#define GPIO_NRF24L01_CE   (GPIO_OUTPUT | GPIO_SPEED_50MHz| \
-                            GPIO_OUTPUT_CLEAR | GPIO_PORTF | GPIO_PIN12)
-#define GPIO_NRF24L01_IRQ  (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTD | GPIO_PIN15)
-
-/* TODO: cannot test */
-/* MMC/SD
- * CS  - PD15 (D9)
- * NCD - PF12 (D8)
- */
-
-#define GPIO_MMCSD_CS    (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_SPEED_50MHz | \
-                          GPIO_OUTPUT_SET | GPIO_PORTD | GPIO_PIN15)
-#define GPIO_MMCSD_NCD    (GPIO_INPUT | GPIO_PULLUP | GPIO_EXTI |  \
-                           GPIO_PORTF | GPIO_PIN12)
-
 /* OA-TC6 SPI CS + INT signal mapping
  * MOSI - PB5  (D22)
  * CLK  - PB3  (D23)
@@ -223,22 +182,6 @@
 #define GPIO_OA_TC6_CS  (GPIO_OUTPUT | GPIO_PUSHPULL | GPIO_SPEED_50MHz | \
                          GPIO_OUTPUT_SET | GPIO_PORTD | GPIO_PIN14)
 #define GPIO_OA_TC6_INT (GPIO_INPUT | GPIO_FLOAT | GPIO_PORTF | GPIO_PIN3)
-
-/* TODO: cannot test */
-/* LMS9DS1 configuration */
-
-#define LMS9DS1_I2CBUS 1
-
-/* TODO: cannot test */
-/* PCA9635 configuration */
-
-#define PCA9635_I2CBUS  1
-#define PCA9635_I2CADDR 0x40
-
-/* TODO: cannot test */
-/* Oled configuration */
-
-#define OLED_I2C_PORT   2
 
 /* PWM */
 
@@ -311,84 +254,8 @@ int stm32_gpio_initialize(void);
  *
  ****************************************************************************/
 
-#ifdef CONFIG_STM32H7_OTGFS
+#ifdef CONFIG_STM32H7_OTGHS
 void weak_function stm32_usbinitialize(void);
-#endif
-
-/****************************************************************************
- * Name: stm32_usbhost_initialize
- *
- * Description:
- *   Called at application startup time to initialize the USB host
- *   functionality. This function will start a thread that will monitor for
- *   device connection/disconnection events.
- *
- ****************************************************************************/
-
-#if defined(CONFIG_STM32H7_OTGFS) && defined(CONFIG_USBHOST)
-int stm32_usbhost_initialize(void);
-#endif
-
-/****************************************************************************
- * Name: stm32_lsm6dsl_initialize
- *
- * Description:
- *   Initialize I2C-based LSM6DSL.
- *
- ****************************************************************************/
-
-/* TODO: cannot test */
-#ifdef CONFIG_SENSORS_LSM303AGR
-int stm32_lsm6dsl_initialize(char *devpath);
-#endif
-
-/****************************************************************************
- * Name: stm32_lsm303agr_initialize
- *
- * Description:
- *   Initialize I2C-based LSM303AGR.
- *
- ****************************************************************************/
-
-/* TODO: cannot test */
-#ifdef CONFIG_SENSORS_LSM6DSL
-int stm32_lsm303agr_initialize(char *devpath);
-#endif
-
-/****************************************************************************
- * Name: stm32_wlinitialize
- *
- * Description:
- *   Initialize NRF24L01 wireless interaface.
- ****************************************************************************/
-
-/* TODO: cannot test */
-#ifdef CONFIG_WL_NRF24L01
-int stm32_wlinitialize(void);
-#endif
-
-/****************************************************************************
- * Name: stm32_lsm9ds1_initialize
- *
- * Description:
- *   Initialize I2C-based LSM9DS1.
- ****************************************************************************/
-
-/* TODO: cannot test */
-#ifdef CONFIG_SENSORS_LSM9DS1
-int stm32_lsm9ds1_initialize(char *devpath);
-#endif
-
-/****************************************************************************
- * Name: stm32_pca9635_initialize
- *
- * Description:
- *   Initialize I2C-based PCA9635PW LED driver.
- ****************************************************************************/
-
-/* TODO: cannot test */
-#ifdef CONFIG_PCA9635PW
-int stm32_pca9635_initialize(void);
 #endif
 
 /****************************************************************************
@@ -401,34 +268,6 @@ int stm32_pca9635_initialize(void);
 
 #ifdef CONFIG_PWM
 int stm32_pwm_setup(void);
-#endif
-
-/****************************************************************************
- * Name: stm32_mtd_initialize
- *
- * Description:
- *   Initialize MTD drivers.
- *
- ****************************************************************************/
-/* TODO: cannot test */
-#ifdef CONFIG_MTD
-
-#ifdef HAVE_PROGMEM_CHARDEV
-int stm32_progmem_init(void);
-#endif /* HAVE_PROGMEM_CHARDEV */
-#endif
-
-/****************************************************************************
- * Name: stm32_mmcsd_initialize
- *
- * Description:
- *   Initialize SPI-based SD card and card detect thread.
- *
- ****************************************************************************/
-
-/* TODO: cannot test */
-#ifdef CONFIG_MMCSD_SPI
-int stm32_mmcsd_initialize(int minor);
 #endif
 
 /****************************************************************************

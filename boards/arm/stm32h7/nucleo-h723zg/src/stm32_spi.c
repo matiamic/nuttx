@@ -66,19 +66,6 @@ void stm32_spidev_initialize(void)
 #ifdef CONFIG_STM32H7_SPI3
   spiinfo("Configure GPIO for SPI3/CS\n");
 
-#  ifdef CONFIG_WL_NRF24L01
-  /* Configure the SPI-based NRF24L01 chip select GPIO */
-
-  stm32_configgpio(GPIO_NRF24L01_CS);
-  stm32_gpiowrite(GPIO_NRF24L01_CS, true);
-#  endif
-#  ifdef CONFIG_MMCSD_SPI
-  /* Configure the SPI-based MMC/SD chip select and card detect GPIO */
-
-  stm32_configgpio(GPIO_MMCSD_CS);
-  stm32_gpiowrite(GPIO_MMCSD_CS, true);
-  stm32_configgpio(GPIO_MMCSD_NCD);
-#  endif
 #  ifdef CONFIG_NET_OA_TC6
   /* Configure the SPI-based chip select GPIO for OA_TC6 MAC-PHYs */
 
@@ -148,23 +135,6 @@ void stm32_spi3select(struct spi_dev_s *dev,
 {
   switch (devid)
     {
-#ifdef CONFIG_WL_NRF24L01
-      case SPIDEV_WIRELESS(0):
-        spiinfo("nRF24L01 device %s\n",
-                selected ? "asserted" : "de-asserted");
-
-        /* Set the GPIO low to select and high to de-select */
-
-        stm32_gpiowrite(GPIO_NRF24L01_CS, !selected);
-        break;
-#endif
-
-#ifdef CONFIG_MMCSD_SPI
-      case SPIDEV_MMCSD(0):
-        stm32_gpiowrite(GPIO_MMCSD_CS, !selected);
-        break;
-#endif
-
 #ifdef CONFIG_NET_OA_TC6
       case SPIDEV_ETHERNET(0):
         stm32_gpiowrite(GPIO_OA_TC6_CS, !selected);
@@ -181,21 +151,6 @@ uint8_t stm32_spi3status(struct spi_dev_s *dev, uint32_t devid)
   uint8_t status = 0;
   switch (devid)
     {
-#ifdef CONFIG_WL_NRF24L01
-      case SPIDEV_WIRELESS(0):
-        status |= SPI_STATUS_PRESENT;
-        break;
-#endif
-
-#ifdef CONFIG_MMCSD_SPI
-      case SPIDEV_MMCSD(0):
-
-        /* Note: SD_DET is pulled high when there's no SD card present. */
-
-        status |= stm32_gpioread(GPIO_MMCSD_NCD);
-        break;
-#endif
-
       default:
         break;
     }

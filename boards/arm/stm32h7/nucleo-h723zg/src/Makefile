@@ -38,10 +38,6 @@ ifeq ($(CONFIG_ARCH_BUTTONS),y)
 CSRCS += stm32_buttons.c
 endif
 
-ifeq ($(CONFIG_STM32_ROMFS),y)
-CSRCS += stm32_romfs_initialize.c
-endif
-
 ifeq ($(CONFIG_STM32H7_SPI),y)
 CSRCS += stm32_spi.c
 endif
@@ -54,36 +50,8 @@ ifeq ($(CONFIG_BOARDCTL_UNIQUEID),y)
 CSRCS += stm32_uid.c
 endif
 
-ifeq ($(CONFIG_SENSORS_LSM6DSL),y)
-CSRCS += stm32_lsm6dsl.c
-endif
-
-ifeq ($(CONFIG_SENSORS_LSM9DS1),y)
-CSRCS += stm32_lsm9ds1.c
-endif
-
-ifeq ($(CONFIG_SENSORS_LSM303AGR),y)
-CSRCS += stm32_lsm303agr.c
-endif
-
-ifeq ($(CONFIG_PCA9635PW),y)
-CSRCS += stm32_pca9635.c
-endif
-
-ifeq ($(CONFIG_LCD_SSD1306),y)
-CSRCS += stm32_ssd1306.c
-endif
-
 ifeq ($(CONFIG_BOARDCTL),y)
 CSRCS += stm32_appinitialize.c
-endif
-
-ifeq ($(CONFIG_STM32H7_PROGMEM),y)
-CSRCS += stm32_progmem.c
-endif
-
-ifeq ($(CONFIG_WL_NRF24L01),y)
-CSRCS += stm32_nrf24l01.c
 endif
 
 ifeq ($(CONFIG_DEV_GPIO),y)
@@ -96,22 +64,6 @@ endif
 
 ifeq ($(CONFIG_BOARDCTL_RESET),y)
 CSRCS += stm32_reset.c
-endif
-
-ifeq ($(CONFIG_BOARDCTL_BOOT_IMAGE),y)
-CSRCS += stm32_boot_image.c
-endif
-
-ifeq ($(CONFIG_USBMSC),y)
-CSRCS += stm32_usbmsc.c
-endif
-
-ifeq ($(CONFIG_USBDEV_COMPOSITE),y)
-CSRCS += stm32_composite.c
-endif
-
-ifeq ($(CONFIG_MMCSD),y)
-CSRCS += stm32_mmcsd.c
 endif
 
 ifeq ($(CONFIG_NET_OA_TC6), y)

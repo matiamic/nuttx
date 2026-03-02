@@ -477,9 +477,6 @@
 
 /* OTGHS */
 
-/* TODO: what to do with the naming? the h723zg only has OTG_HS, but mapped to
- * the same pins as h743zi */
-
 #define GPIO_OTGFS_DM  (GPIO_OTGFS_DM_0  | GPIO_SPEED_100MHz)
 #define GPIO_OTGFS_DP  (GPIO_OTGFS_DP_0  | GPIO_SPEED_100MHz)
 #define GPIO_OTGFS_ID  (GPIO_OTGFS_ID_0  | GPIO_SPEED_100MHz)

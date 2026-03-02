@@ -36,10 +36,6 @@ if(CONFIG_ARCH_BUTTONS)
   list(APPEND SRCS stm32_buttons.c)
 endif()
 
-if(CONFIG_STM32_ROMFS)
-  list(APPEND SRCS stm32_romfs_initialize.c)
-endif()
-
 if(CONFIG_STM32H7_SPI)
   list(APPEND SRCS stm32_spi.c)
 endif()
@@ -52,36 +48,8 @@ if(CONFIG_BOARDCTL_UNIQUEID)
   list(APPEND SRCS stm32_uid.c)
 endif()
 
-if(CONFIG_SENSORS_LSM6DSL)
-  list(APPEND SRCS stm32_lsm6dsl.c)
-endif()
-
-if(CONFIG_SENSORS_LSM9DS1)
-  list(APPEND SRCS stm32_lsm9ds1.c)
-endif()
-
-if(CONFIG_SENSORS_LSM303AGR)
-  list(APPEND SRCS stm32_lsm303agr.c)
-endif()
-
-if(CONFIG_PCA9635PW)
-  list(APPEND SRCS stm32_pca9635.c)
-endif()
-
-if(CONFIG_LCD_SSD1306)
-  list(APPEND SRCS stm32_ssd1306.c)
-endif()
-
 if(CONFIG_BOARDCTL)
   list(APPEND SRCS stm32_appinitialize.c)
-endif()
-
-if(CONFIG_STM32H7_PROGMEM)
-  list(APPEND SRCS stm32_progmem.c)
-endif()
-
-if(CONFIG_WL_NRF24L01)
-  list(APPEND SRCS stm32_nrf24l01.c)
 endif()
 
 if(CONFIG_DEV_GPIO)
@@ -94,22 +62,6 @@ endif()
 
 if(CONFIG_BOARDCTL_RESET)
   list(APPEND SRCS stm32_reset.c)
-endif()
-
-if(CONFIG_BOARDCTL_BOOT_IMAGE)
-  list(APPEND SRCS stm32_boot_image.c)
-endif()
-
-if(CONFIG_USBMSC)
-  list(APPEND SRCS stm32_usbmsc.c)
-endif()
-
-if(CONFIG_USBDEV_COMPOSITE)
-  list(APPEND SRCS stm32_composite.c)
-endif()
-
-if(CONFIG_MMCSD)
-  list(APPEND SRCS stm32_mmcsd.c)
 endif()
 
 if(CONFIG_NET_OA_TC6)

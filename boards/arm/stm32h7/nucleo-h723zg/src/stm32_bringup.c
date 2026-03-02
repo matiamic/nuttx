@@ -38,12 +38,8 @@
 #  include <nuttx/usb/usbmonitor.h>
 #endif
 
-#if defined(CONFIG_CDCACM)
+#ifdef CONFIG_CDCACM
 #  include <nuttx/usb/cdcacm.h>
-#endif
-
-#ifdef CONFIG_STM32H7_OTGFS
-#  include "stm32_usbhost.h"
 #endif
 
 #include "nucleo-h723zg.h"
