@@ -62,6 +62,10 @@
 #endif /* CONFIG_WS2812_HAS_WHITE */
 #endif
 
+#if defined(CONFIG_SENSORS_HCSR04)
+#  include "rp23xx_hcsr04.h"
+#endif
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -519,6 +523,14 @@ int rp23xx_common_bringup(void)
         }
     }
 
+#endif
+
+#if defined(CONFIG_SENSORS_HCSR04)
+
+  if (board_hcsr04_initialize(0))
+    {
+      syslog(LOG_ERR, "Failed to initialize HC-SR04: %d\n", errno);
+    }
 #endif
   return ret;
 }

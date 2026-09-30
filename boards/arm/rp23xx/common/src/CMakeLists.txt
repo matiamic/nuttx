@@ -110,6 +110,10 @@ if(CONFIG_ARCH_BOARD_COMMON)
     list(APPEND SRCS rp23xx_max6675.c)
   endif()
 
+  if(CONFIG_SENSORS_HCSR04)
+    list(APPEND SRCS rp23xx_hcsr04.c)
+  endif()
+
 endif()
 target_sources(board PRIVATE ${SRCS})
 target_compile_options(board PRIVATE ${RP23XXFLAGS})

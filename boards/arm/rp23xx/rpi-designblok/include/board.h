@@ -120,6 +120,11 @@
 #define BUTTON_USER1_BIT  (1 << BUTTON_USER1)
 #define BUTTON_USER2_BIT  (1 << BUTTON_USER2)
 
+/* HC-SR04 definitions ******************************************************/
+
+#define BOARD_HCSR04_GPIO_ECHO 27
+#define BOARD_HCSR04_GPIO_TRIG 28
+
 /****************************************************************************
  * Public Types
  ****************************************************************************/

@@ -44,8 +44,8 @@
 /* Output pins. GPIO25 is onboard LED any other outputs could be used.
  */
 
-#define GPIO_OUT_LIGHT1   1
-#define GPIO_OUT_LIGHT2   0
+#define GPIO_OUT_LIGHT_A  1
+#define GPIO_OUT_LIGHT_B  0
 #define GPIO_OUT_RADAR_EN 7
 #define GPIO_OUT_USB_EN   15
 
@@ -113,8 +113,8 @@ static const struct gpio_operations_s gpout_ops =
 
 static const uint32_t g_gpiooutputs[BOARD_NGPIOOUT] =
 {
-  GPIO_OUT_LIGHT1,
-  GPIO_OUT_LIGHT2,
+  GPIO_OUT_LIGHT_A,
+  GPIO_OUT_LIGHT_B,
   GPIO_OUT_RADAR_EN,
   GPIO_OUT_USB_EN,
 };
@@ -122,8 +122,8 @@ static const uint32_t g_gpiooutputs[BOARD_NGPIOOUT] =
 /* This array maps the names of GPIO pins used as OUTPUT */
 static const char *g_gpiooutputnames[BOARD_NGPIOOUT] =
 {
-  "gpio_out_light1",
-  "gpio_out_light2",
+  "gpio_out_light_A",
+  "gpio_out_light_B",
   "gpio_out_radar_en",
   "gpio_out_usb_en",
 };
